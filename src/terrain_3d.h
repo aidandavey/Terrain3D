@@ -11,6 +11,8 @@
 #include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/classes/static_body3d.hpp>
 #include <godot_cpp/classes/sub_viewport.hpp>
+#include <godot_cpp/classes/navigation_mesh.hpp>
+#include <godot_cpp/classes/navigation_mesh_source_geometry_data3d.hpp>
 
 #include "constants.h"
 #include "terrain_3d_assets.h"
@@ -44,6 +46,12 @@ public: // Constants
 		SIZE_512 = 512,
 		SIZE_1024 = 1024,
 		SIZE_2048 = 2048,
+	};
+
+	enum NavigationBakeMode {
+		NAVIGATION_NONE = 0,
+		NAVIGATION_PAINTED = 1,
+		NAVIGATION_FULL = 2,
 	};
 
 private:
@@ -87,6 +95,11 @@ private:
 	real_t _cull_margin = 0.0f;
 	bool _free_editor_textures = true;
 
+	// Navigation
+	NavigationBakeMode _navigagion_bake_mode = NavigationBakeMode::NAVIGATION_PAINTED;
+	Callable _navmesh_source_geometry_parsing_callback;
+	RID _navmesh_source_geometry_parser;
+
 	// Mouse cursor
 	SubViewport *_mouse_vp = nullptr;
 	Camera3D *_mouse_cam = nullptr;
@@ -120,6 +133,7 @@ private:
 
 public:
 	static DebugLevel debug_level; // Initialized in terrain_3d.cpp
+
 
 	Terrain3D();
 	~Terrain3D() {}
@@ -188,7 +202,12 @@ public:
 	// Utility
 	Vector3 get_intersection(const Vector3 &p_src_pos, const Vector3 &p_direction, const bool p_gpu_mode = false);
 	Ref<Mesh> bake_mesh(const int p_lod, const Terrain3DData::HeightFilter p_filter = Terrain3DData::HEIGHT_FILTER_NEAREST) const;
-	PackedVector3Array generate_nav_mesh_source_geometry(const AABB &p_global_aabb, const bool p_require_nav = true) const;
+
+	// Navigation
+	void navmesh_parse_init();
+	//void _destroy_navigation_parser();
+	void navmesh_parse_source_geometry(Ref<NavigationMesh> &p_navigation_mesh, Ref<NavigationMeshSourceGeometryData3D> p_source_geometry_data, Node *p_node);
+	PackedVector3Array generate_nav_mesh_source_geometry(const AABB &p_global_aabb, const bool p_require_nav = true, const int p_lod = 0) const;
 
 	// Warnings
 	void set_warning(const uint8_t p_warning, const bool p_enabled);
@@ -222,6 +241,10 @@ public:
 	bool get_show_contours() const { return _material.is_valid() ? _material->get_show_contours() : false; }
 	void set_show_navigation(const bool p_enabled) { _material.is_valid() ? _material->set_show_navigation(p_enabled) : void(); }
 	bool get_show_navigation() const { return _material.is_valid() ? _material->get_show_navigation() : false; }
+
+	// Navigation mode
+	void set_navigation_bake_mode(const NavigationBakeMode p_mode) { _navigagion_bake_mode = p_mode; }
+	NavigationBakeMode get_navigation_bake_mode() const { return _navigagion_bake_mode; }
 
 	// Debug View Aliases
 	void set_show_checkered(const bool p_enabled) { _material.is_valid() ? _material->set_show_checkered(p_enabled) : void(); }
@@ -260,6 +283,7 @@ protected:
 
 VARIANT_ENUM_CAST(Terrain3D::RegionSize);
 VARIANT_ENUM_CAST(Terrain3D::DebugLevel);
+VARIANT_ENUM_CAST(Terrain3D::NavigationBakeMode);
 
 constexpr Terrain3D::DebugLevel MESG = Terrain3D::DebugLevel::MESG;
 constexpr Terrain3D::DebugLevel WARN = Terrain3D::DebugLevel::WARN;

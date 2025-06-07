@@ -17,12 +17,19 @@
 #include <godot_cpp/classes/viewport_texture.hpp>
 #include <godot_cpp/classes/world3d.hpp>
 
+#include <godot_cpp/classes/node.hpp>
+
+
+#include <godot_cpp/classes/navigation_server3d.hpp>
+
 #include "logger.h"
 #include "terrain_3d.h"
 #include "terrain_3d_util.h"
 
-// Initialize static member variable
+// Initialize static member variables
 Terrain3D::DebugLevel Terrain3D::debug_level{ ERROR };
+//Callable Terrain3D::_navmesh_source_geometry_parsing_callback;
+//RID Terrain3D::_navmesh_source_geometry_parser;
 
 ///////////////////////////
 // Private Functions
@@ -100,6 +107,11 @@ void Terrain3D::_initialize() {
 		_mesher->initialize(this);
 		_initialized = true;
 	}
+
+	if (!_navmesh_source_geometry_parser) {
+		navmesh_parse_init();
+	}
+
 	update_configuration_warnings();
 }
 
@@ -774,6 +786,86 @@ Ref<Mesh> Terrain3D::bake_mesh(const int p_lod, const Terrain3DData::HeightFilte
 	return result;
 }
 
+// Called in e.g. extension init LEVEL_SCENE so the NavigationServer already exists.
+void Terrain3D::navmesh_parse_init() {
+	ERR_FAIL_NULL(NavigationServer3D::get_singleton());
+	if (!_navmesh_source_geometry_parser.is_valid()) {
+
+		_navmesh_source_geometry_parsing_callback = callable_mp(this, &Terrain3D::navmesh_parse_source_geometry);
+		_navmesh_source_geometry_parser = NavigationServer3D::get_singleton()->source_geometry_parser_create();
+		NavigationServer3D::get_singleton()->source_geometry_parser_set_callback(_navmesh_source_geometry_parser, _navmesh_source_geometry_parsing_callback);
+	}
+}
+
+//void Terrain3D::_destroy_navigation_parser() {
+//	if (_navmesh_source_geometry_parser.is_valid()) {
+//		NavigationServer3D::get_singleton()->free_rid(_navmesh_source_geometry_parser);
+//	}
+//}
+ 
+// Note:
+// In case the extension can be toggled the geometry parser RID needs to be freed with the NavigationServer.
+// The engine auto-deletes those parser RIDs on shutdown so no need to free it if the module persists for the entire time.
+
+void Terrain3D::navmesh_parse_source_geometry(Ref<NavigationMesh> &p_navigation_mesh, Ref<NavigationMeshSourceGeometryData3D> p_source_geometry_data, Node *p_node) {
+	Terrain3D *terrain3d = Object::cast_to<Terrain3D>(p_node);
+
+	if (terrain3d == nullptr) {
+		// This callback will be called for every single node that gets parsed by the navmesh baking process.
+		// So only handle anything if it is actually a node from this module / extension, else do nothing.
+		return;
+	}
+
+	// For legacy reason the NavigationMesh is the parse settings. Do NOT add or modify anything, read-only.
+	// Look at the more important parse settings what user intend to parse for navmesh baking.
+
+	NavigationMesh::ParsedGeometryType parsed_geometry_type = p_navigation_mesh->get_parsed_geometry_type();
+	uint32_t parsed_collision_mask = p_navigation_mesh->get_collision_mask();
+
+	AABB baking_bounds = p_navigation_mesh->get_filter_baking_aabb();
+	if (baking_bounds.has_volume()) {
+		Vector3 baking_aabb_offset = p_navigation_mesh->get_filter_baking_aabb_offset();
+		baking_bounds.position += baking_aabb_offset;
+	}
+	
+	PackedVector3Array source_geometry;
+	int lod = 0;
+
+	switch (_navigagion_bake_mode) {
+		case NavigationBakeMode::NAVIGATION_NONE: {
+			LOG(WARN, "Navigation_NONE, returning");
+			return;
+			break;
+		}
+		case NavigationBakeMode::NAVIGATION_PAINTED: {				
+			LOG(WARN, "NAVIGATION_PAINTED, continuing");
+			source_geometry = terrain3d->generate_nav_mesh_source_geometry(baking_bounds, true, lod);
+			break;
+		}
+		case NavigationBakeMode::NAVIGATION_FULL: {				
+			LOG(WARN, "NAVIGATION_FULL, continuing");
+			source_geometry = terrain3d->generate_nav_mesh_source_geometry(baking_bounds, false, lod);	
+			break;
+		}
+	}
+		
+	if (parsed_geometry_type == NavigationMesh::PARSED_GEOMETRY_BOTH) {
+		// User wants to parse all types so do both PARSED_GEOMETRY_MESH_INSTANCES and PARSED_GEOMETRY_STATIC_COLLIDERS.	
+		p_source_geometry_data->add_faces(source_geometry, Transform3D());
+		
+	} else if (parsed_geometry_type == NavigationMesh::PARSED_GEOMETRY_MESH_INSTANCES) {
+		// User wants to parse visual rendering meshes, e.g. MeshInstance3D like nodes (very low performance).
+		p_source_geometry_data->add_faces(source_geometry, Transform3D());
+	
+	} else if (parsed_geometry_type == NavigationMesh::PARSED_GEOMETRY_STATIC_COLLIDERS) {
+		// User wants to parse physics colliders, e.g. StaticBody3D like nodes.
+ 		if (terrain3d->get_collision_layer() & parsed_collision_mask) {
+			// Only add if there is an actual collision mask match between node and parse settings.
+			p_source_geometry_data->add_faces(source_geometry, Transform3D());
+		}
+	}
+}
+
 /**
  * Generates source geometry faces for input to nav mesh baking. Geometry is only generated where there
  * are no holes and the terrain has been painted as navigable.
@@ -783,10 +875,10 @@ Ref<Mesh> Terrain3D::bake_mesh(const int p_lod, const Terrain3DData::HeightFilte
  *  Otherwise, geometry is generated for the entire terrain within the AABB (which can be useful for
  *  dynamic and/or runtime nav mesh baking).
  */
-PackedVector3Array Terrain3D::generate_nav_mesh_source_geometry(const AABB &p_global_aabb, const bool p_require_nav) const {
+PackedVector3Array Terrain3D::generate_nav_mesh_source_geometry(const AABB &p_global_aabb, const bool p_require_nav, const int p_lod) const {
 	LOG(INFO, "Generating NavMesh source geometry from terrain");
 	PackedVector3Array faces;
-	_generate_triangles(faces, nullptr, 0, Terrain3DData::HEIGHT_FILTER_NEAREST, p_require_nav, p_global_aabb);
+	_generate_triangles(faces, nullptr, p_lod, Terrain3DData::HEIGHT_FILTER_NEAREST, p_require_nav, p_global_aabb);
 	return faces;
 }
 
@@ -1000,6 +1092,10 @@ void Terrain3D::_bind_methods() {
 	BIND_ENUM_CONSTANT(SIZE_1024);
 	BIND_ENUM_CONSTANT(SIZE_2048);
 
+	BIND_ENUM_CONSTANT(NAVIGATION_NONE);
+	BIND_ENUM_CONSTANT(NAVIGATION_PAINTED);
+	BIND_ENUM_CONSTANT(NAVIGATION_FULL);
+
 	ClassDB::bind_method(D_METHOD("get_version"), &Terrain3D::get_version);
 	ClassDB::bind_method(D_METHOD("set_debug_level", "level"), &Terrain3D::set_debug_level);
 	ClassDB::bind_method(D_METHOD("get_debug_level"), &Terrain3D::get_debug_level);
@@ -1056,6 +1152,10 @@ void Terrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_vertex_spacing"), &Terrain3D::get_vertex_spacing);
 	ClassDB::bind_method(D_METHOD("get_snapped_position"), &Terrain3D::get_snapped_position);
 
+	// Navigation
+	ClassDB::bind_method(D_METHOD("set_navigation_bake_mode", "nv_mode"), &Terrain3D::set_navigation_bake_mode);
+	ClassDB::bind_method(D_METHOD("get_navigation_bake_mode"), &Terrain3D::get_navigation_bake_mode);
+
 	// Rendering
 	ClassDB::bind_method(D_METHOD("set_render_layers", "layers"), &Terrain3D::set_render_layers);
 	ClassDB::bind_method(D_METHOD("get_render_layers"), &Terrain3D::get_render_layers);
@@ -1072,6 +1172,7 @@ void Terrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_show_instances", "visible"), &Terrain3D::set_show_instances);
 	ClassDB::bind_method(D_METHOD("get_show_instances"), &Terrain3D::get_show_instances);
 
+	
 	// Overlays
 	ClassDB::bind_method(D_METHOD("set_show_region_grid", "enabled"), &Terrain3D::set_show_region_grid);
 	ClassDB::bind_method(D_METHOD("get_show_region_grid"), &Terrain3D::get_show_region_grid);
@@ -1117,7 +1218,7 @@ void Terrain3D::_bind_methods() {
 	// Utility
 	ClassDB::bind_method(D_METHOD("get_intersection", "src_pos", "direction", "gpu_mode"), &Terrain3D::get_intersection, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("bake_mesh", "lod", "filter"), &Terrain3D::bake_mesh, DEFVAL(Terrain3DData::HEIGHT_FILTER_NEAREST));
-	ClassDB::bind_method(D_METHOD("generate_nav_mesh_source_geometry", "global_aabb", "require_nav"), &Terrain3D::generate_nav_mesh_source_geometry, DEFVAL(true));
+	ClassDB::bind_method(D_METHOD("generate_nav_mesh_source_geometry", "global_aabb", "require_nav", "lod"), &Terrain3D::generate_nav_mesh_source_geometry, DEFVAL(true), DEFVAL(0));
 
 	ADD_PROPERTY(PropertyInfo(Variant::STRING, "version", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_READ_ONLY), "", "get_version");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "debug_level", PROPERTY_HINT_ENUM, "Errors,Info,Debug,Extreme"), "set_debug_level", "get_debug_level");
@@ -1145,6 +1246,9 @@ void Terrain3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "collision_mask", PROPERTY_HINT_LAYERS_3D_PHYSICS), "set_collision_mask", "get_collision_mask");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "collision_priority", PROPERTY_HINT_RANGE, "0.1,256,.1"), "set_collision_priority", "get_collision_priority");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "physics_material", PROPERTY_HINT_RESOURCE_TYPE, "PhysicsMaterial"), "set_physics_material", "get_physics_material");
+
+	ADD_GROUP("Navigation", "");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "navigation_bake_mode", PROPERTY_HINT_ENUM, "Disabled, Painted, Full"), "set_navigation_bake_mode", "get_navigation_bake_mode");
 
 	ADD_GROUP("Mesh", "");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "mesh_lods", PROPERTY_HINT_RANGE, "1,10,1"), "set_mesh_lods", "get_mesh_lods");
