@@ -128,10 +128,18 @@ void Terrain3D::__physics_process(const double p_delta) {
 			}
 			_snapped_position = (cam_pos / _vertex_spacing).floor() * _vertex_spacing;
 			_camera_last_position = cam_pos_2d;
-			if (_collision && _collision->is_dynamic_mode()) {
-				_collision->update();
-			}
 		}
+	}
+
+	// Update collision
+	if (!get_custom_collision_node() || !get_custom_collision_node()->is_inside_tree()) {
+		if (_camera) {
+			LOG(DEBUG, "Custom collision node is null, setting to camera");
+			set_custom_collision_node(_camera);
+		}
+	}
+	if (_collision && _collision->is_dynamic_mode()) {
+		_collision->update();
 	}
 }
 
@@ -1046,6 +1054,8 @@ void Terrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_collision_priority"), &Terrain3D::get_collision_priority);
 	ClassDB::bind_method(D_METHOD("set_physics_material", "material"), &Terrain3D::set_physics_material);
 	ClassDB::bind_method(D_METHOD("get_physics_material"), &Terrain3D::get_physics_material);
+	ClassDB::bind_method(D_METHOD("set_custom_collision_node", "node"), &Terrain3D::set_custom_collision_node);
+	ClassDB::bind_method(D_METHOD("get_custom_collision_node"), &Terrain3D::get_custom_collision_node);
 
 	// Meshes
 	ClassDB::bind_method(D_METHOD("set_mesh_lods", "count"), &Terrain3D::set_mesh_lods);
@@ -1145,6 +1155,7 @@ void Terrain3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "collision_mask", PROPERTY_HINT_LAYERS_3D_PHYSICS), "set_collision_mask", "get_collision_mask");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "collision_priority", PROPERTY_HINT_RANGE, "0.1,256,.1"), "set_collision_priority", "get_collision_priority");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "physics_material", PROPERTY_HINT_RESOURCE_TYPE, "PhysicsMaterial"), "set_physics_material", "get_physics_material");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "custom_collision_node", PROPERTY_HINT_NODE_TYPE, "Node3D"), "set_custom_collision_node", "get_custom_collision_node");
 
 	ADD_GROUP("Mesh", "");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "mesh_lods", PROPERTY_HINT_RANGE, "1,10,1"), "set_mesh_lods", "get_mesh_lods");

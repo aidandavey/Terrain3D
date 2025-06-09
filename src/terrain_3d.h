@@ -210,6 +210,8 @@ public:
 	real_t get_collision_priority() const { return _collision ? _collision->get_priority() : 1.f; }
 	void set_physics_material(const Ref<PhysicsMaterial> &p_mat) { _collision ? _collision->set_physics_material(p_mat) : void(); }
 	Ref<PhysicsMaterial> get_physics_material() const { return _collision ? _collision->get_physics_material() : Ref<PhysicsMaterial>(); }
+	Node3D *get_custom_collision_node() const { return _collision ? _collision->get_custom_collision_node() : _camera; }
+	void set_custom_collision_node(Node3D *p_node) const { _collision ? _collision->set_custom_collision_node(p_node) : void(); };
 
 	// Overlay Aliases
 	void set_show_region_grid(const bool p_enabled) { _material.is_valid() ? _material->set_show_region_grid(p_enabled) : void(); }
