@@ -5,6 +5,7 @@
 
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
+#include <godot_cpp/classes/standard_material3d.hpp>
 #include <unordered_map>
 
 #include "constants.h"
@@ -39,6 +40,8 @@ private:
 	// _mmi_containers{region_loc} -> Node3D
 	std::unordered_map<Vector2i, Node3D *, Vector2iHash> _mmi_containers;
 
+	StandardMaterial3D *highlight_mat = nullptr;
+
 	uint32_t _density_counter = 0;
 	uint32_t _get_density_count(const real_t p_density);
 
@@ -64,6 +67,7 @@ public:
 	void clear_by_region(const Ref<Terrain3DRegion> &p_region, const int p_mesh_id);
 
 	void add_instances(const Vector3 &p_global_position, const Dictionary &p_params);
+	void highlight_instances(const int &p_mesh_id);
 	void remove_instances(const Vector3 &p_global_position, const Dictionary &p_params);
 	void add_multimesh(const int p_mesh_id, const Ref<MultiMesh> &p_multimesh, const Transform3D &p_xform = Transform3D(), const bool p_update = true);
 	void add_transforms(const int p_mesh_id, const TypedArray<Transform3D> &p_xforms, const PackedColorArray &p_colors = PackedColorArray(), const bool p_update = true);

@@ -158,10 +158,6 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 					if (mat.is_valid()) {
 						mmi->set_material_override(mat);
 					}
-					mat = ma->get_material_overlay();
-					if (mat.is_valid()) {
-						mmi->set_material_overlay(mat);
-					}
 
 					// Reposition the MMI to its region location
 					Transform3D t = Transform3D();
@@ -177,6 +173,8 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 			}
 		}
 	}
+
+	highlight_instances(2);
 }
 
 void Terrain3DInstancer::_setup_mmi_lod_ranges(MultiMeshInstance3D *p_mmi, const Ref<Terrain3DMeshAsset> &p_ma, const int p_lod) {
@@ -350,10 +348,12 @@ Ref<MultiMesh> Terrain3DInstancer::_create_multimesh(const int p_mesh_id, const 
 		LOG(ERROR, "No LOD ", p_lod, " for mesh id ", p_mesh_id, " found");
 		return mm;
 	}
+
 	mm.instantiate();
 	mm->set_transform_format(MultiMesh::TRANSFORM_3D);
 	mm->set_use_colors(true);
 	mm->set_mesh(mesh);
+
 	if (p_xforms.size() > 0) {
 		mm->set_instance_count(p_xforms.size());
 		for (int i = 0; i < p_xforms.size(); i++) {
@@ -384,6 +384,21 @@ void Terrain3DInstancer::initialize(Terrain3D *p_terrain) {
 	}
 	IS_DATA_INIT_MESG("Terrain3D not initialized yet", VOID);
 	LOG(INFO, "Initializing Instancer");
+
+	highlight_mat = memnew(StandardMaterial3D);
+
+	if (!highlight_mat) {
+		LOG(ERROR, "Failed to create MMI highlight material");
+	} else {
+		LOG(MESG, "Got here!");
+		highlight_mat->set_blend_mode(StandardMaterial3D::BLEND_MODE_ADD);
+		highlight_mat->set_cull_mode(StandardMaterial3D::CULL_FRONT);
+		highlight_mat->set_albedo(Color(1.f, 0.5f, 0.f, 0.5f));
+		highlight_mat->set_shading_mode(StandardMaterial3D::SHADING_MODE_UNSHADED);
+		highlight_mat->set_grow_enabled(true);
+		highlight_mat->set_grow(0.3f);
+	}
+
 	_update_mmis();
 }
 
@@ -405,6 +420,8 @@ void Terrain3DInstancer::destroy() {
 			_destroy_mmi_by_location(region_loc, m);
 		}
 	}
+
+	//memdelete_safely(highlight_mat);
 }
 
 void Terrain3DInstancer::clear_by_mesh(const int p_mesh_id) {
@@ -543,6 +560,58 @@ void Terrain3DInstancer::add_instances(const Vector3 &p_global_position, const D
 	// Append multimesh
 	if (xforms.size() > 0) {
 		add_transforms(mesh_id, xforms, colors);
+	}
+}
+
+void Terrain3DInstancer::highlight_instances(const int &p_mesh_id) {
+	TypedArray<Vector2i> region_locations = _terrain->get_data()->get_region_locations();
+	for (int i = 0; i < region_locations.size(); i++) {
+		Vector2i region_location = region_locations[i];
+
+		Terrain3DRegion *region = _terrain->get_data()->get_region_ptr(region_location);
+		if (!region) {
+			LOG(WARN, "Errant null region found at: ", region_location);
+			continue;
+		}
+
+		Dictionary mesh_instance_dict = region->get_instances();
+
+		Array mesh_types = mesh_instance_dict.keys();
+
+		for (int m = 0; m < mesh_types.size(); m++) {
+			int mesh_id = mesh_types[m];
+
+			Dictionary cell_instance_dict = mesh_instance_dict[mesh_id];
+			Array cell_locations = cell_instance_dict.keys();
+
+			for (int c = 0; c < cell_locations.size(); c++) {
+				Vector2i cell_location = cell_locations[c];
+
+				MeshMMIDict mesh_mmi_dict = _mmi_nodes[region_location];
+				Vector2i mesh_key(mesh_id, 0);
+
+				CellMMIDict cell_mmi_dict = mesh_mmi_dict[mesh_key];
+
+				for (int k = 0; k < cell_mmi_dict.size(); k++) {
+					MultiMeshInstance3D *mmi = cell_mmi_dict[cell_location];
+					if (mmi) {
+						if (mesh_id == p_mesh_id) {
+							// If the mesh id matches, highlight the MMI
+							// Set the highlight material
+							mmi->set_material_overlay(highlight_mat);
+							LOG(EXTREME, "Highlighting MMI: ", uint64_t(mmi), " in region: ", region_location, " cell: ", cell_location);
+						} else {
+							// If not matching, skip highlighting
+							// Set the highlight material
+							mmi->set_material_overlay(nullptr);
+							LOG(EXTREME, "Highlighting MMI: ", uint64_t(mmi), " in region: ", region_location, " cell: ", cell_location);
+						}
+					} else {
+						LOG(WARN, "MMI not found for cell: ", cell_location, " in region: ", region_location);
+					}
+				}
+			}
+		}
 	}
 }
 
