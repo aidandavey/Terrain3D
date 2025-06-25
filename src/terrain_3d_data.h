@@ -19,8 +19,6 @@ class Terrain3DData : public Object {
 
 public: // Constants
 	static inline const real_t CURRENT_VERSION = 0.93f;
-	static inline const int REGION_MAP_SIZE = 32;
-	static inline const Vector2i REGION_MAP_VSIZE = Vector2i(REGION_MAP_SIZE, REGION_MAP_SIZE);
 
 	enum HeightFilter {
 		HEIGHT_FILTER_NEAREST,
@@ -29,6 +27,9 @@ public: // Constants
 
 private:
 	Terrain3D *_terrain = nullptr;
+
+	uint32_t _region_map_size = 32;
+	Vector2i _region_map_size_v = Vector2i(32, 32);
 
 	// Data Settings & flags
 	int _region_size = 0; // Set by Terrain3D::set_region_size
@@ -85,6 +86,11 @@ public:
 	void initialize(Terrain3D *p_terrain);
 	~Terrain3DData() { _clear(); }
 
+	// Streaming
+
+	uint32_t get_region_map_size() const { return _region_map_size; }
+	void set_region_map_size(const uint32_t p_size);
+
 	// Regions
 
 	int get_region_count() const { return _region_locations.size(); }
@@ -93,7 +99,7 @@ public:
 	TypedArray<Terrain3DRegion> get_regions_active(const bool p_copy = false, const bool p_deep = false) const;
 	Dictionary get_regions_all() const { return _regions; }
 	PackedInt32Array get_region_map() const { return _region_map; }
-	static int get_region_map_index(const Vector2i &p_region_loc);
+	int get_region_map_index(const Vector2i &p_region_loc) const;
 
 	void do_for_regions(const Rect2i &p_area, const Callable &p_callback);
 	void change_region_size(int region_size);
@@ -194,20 +200,6 @@ protected:
 VARIANT_ENUM_CAST(Terrain3DData::HeightFilter);
 
 // Inline Region Functions
-
-// Verifies the location is within the bounds of the _region_map array and
-// the world, returning the _region_map index, which contains the region_id.
-// Valid region locations are -16, -16 to 15, 15, or when offset: 0, 0 to 31, 31
-// If any bits other than 0x1F are set, it's out of bounds and returns -1
-inline int Terrain3DData::get_region_map_index(const Vector2i &p_region_loc) {
-	// Offset world to positive values only
-	Vector2i loc = p_region_loc + (REGION_MAP_VSIZE / 2);
-	// Catch values > 31
-	if ((uint32_t(loc.x | loc.y) & uint32_t(~0x1F)) > 0) {
-		return -1;
-	}
-	return loc.y * REGION_MAP_SIZE + loc.x;
-}
 
 // Returns a region location given a global position. No bounds checking nor data access.
 inline Vector2i Terrain3DData::get_region_location(const Vector3 &p_global_position) const {

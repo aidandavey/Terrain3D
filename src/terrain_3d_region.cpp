@@ -248,11 +248,11 @@ Error Terrain3DRegion::save(const String &p_path, const bool p_16_bit) {
 void Terrain3DRegion::set_location(const Vector2i &p_location) {
 	// In the future anywhere they want to put the location might be fine, but because of region_map
 	// We have a limitation of 16x16 and eventually 45x45.
-	if (Terrain3DData::get_region_map_index(p_location) < 0) {
-		LOG(ERROR, "Location ", p_location, " out of bounds. Max: ",
-				-Terrain3DData::REGION_MAP_SIZE / 2, " to ", Terrain3DData::REGION_MAP_SIZE / 2 - 1);
-		return;
-	}
+	//if (get_region_map_index(p_location) < 0) {
+	//	LOG(ERROR, "Location ", p_location, " out of bounds. Max: ",
+	//			-Terrain3DData::REGION_MAP_SIZE / 2, " to ", Terrain3DData::REGION_MAP_SIZE / 2 - 1);
+	//	return;
+	//}
 	LOG(INFO, "Set location: ", p_location);
 	_location = p_location;
 }

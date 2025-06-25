@@ -42,7 +42,7 @@ Terrain3DRegion *Terrain3DEditor::_operate_region(const Vector2i &p_region_loc) 
 	if (data->get_region_map_index(p_region_loc) < 0) {
 		if (can_print) {
 			LOG(INFO, "Location ", p_region_loc, " out of bounds. Max: ",
-					-Terrain3DData::REGION_MAP_SIZE / 2, " to ", Terrain3DData::REGION_MAP_SIZE / 2 - 1);
+					-data->get_region_map_size() / 2, " to ", data->get_region_map_size() / 2 - 1);
 		}
 		return nullptr;
 	}

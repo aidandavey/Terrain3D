@@ -478,12 +478,12 @@ void Terrain3DMaterial::_update_maps() {
 	Terrain3DData *data = _terrain->get_data();
 	PackedInt32Array region_map = data->get_region_map();
 	LOG(EXTREME, "region_map.size(): ", region_map.size());
-	if (region_map.size() != Terrain3DData::REGION_MAP_SIZE * Terrain3DData::REGION_MAP_SIZE) {
-		LOG(ERROR, "Expected region_map.size() of ", Terrain3DData::REGION_MAP_SIZE * Terrain3DData::REGION_MAP_SIZE);
+	if (region_map.size() != data->get_region_map_size() * data->get_region_map_size()) {
+		LOG(ERROR, "Expected region_map.size() of ", data->get_region_map_size() * data->get_region_map_size());
 		return;
 	}
 	RS->material_set_param(_material, "_region_map", region_map);
-	RS->material_set_param(_material, "_region_map_size", Terrain3DData::REGION_MAP_SIZE);
+	RS->material_set_param(_material, "_region_map_size", data->get_region_map_size());
 	if (Terrain3D::debug_level >= EXTREME) {
 		LOG(EXTREME, "Region map");
 		for (int i = 0; i < region_map.size(); i++) {

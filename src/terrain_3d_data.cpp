@@ -18,7 +18,7 @@ void Terrain3DData::_clear() {
 	LOG(INFO, "Clearing data");
 	_region_map_dirty = true;
 	_region_map.clear();
-	_region_map.resize(REGION_MAP_SIZE * REGION_MAP_SIZE);
+	_region_map.resize(_region_map_size * _region_map_size);
 	_regions.clear();
 	_region_locations.clear();
 	_master_height_range = V2_ZERO;
@@ -55,13 +55,32 @@ void Terrain3DData::initialize(Terrain3D *p_terrain) {
 	LOG(INFO, "Initializing data");
 	bool prev_initialized = _terrain != nullptr;
 	_terrain = p_terrain;
-	_region_map.resize(REGION_MAP_SIZE * REGION_MAP_SIZE);
+	_region_map.resize(_region_map_size * _region_map_size);
 	_vertex_spacing = _terrain->get_vertex_spacing();
 	if (!prev_initialized && !_terrain->get_data_directory().is_empty()) {
 		load_directory(_terrain->get_data_directory());
 	}
 	_region_size = _terrain->get_region_size();
 	_region_sizev = Vector2i(_region_size, _region_size);
+}
+
+void Terrain3DData::set_region_map_size(const uint32_t p_size) {
+	if (!Engine::get_singleton()->is_editor_hint()) {
+		LOG(WARN, "set_region_map_size should only be called in editor mode");
+	}
+	_region_map_size = p_size;
+	_region_map_size_v = Vector2i(_region_map_size, _region_map_size);
+	initialize(_terrain);
+}
+
+int Terrain3DData::get_region_map_index(const Vector2i &p_region_loc) const {
+	// Offset world to positive values only
+	Vector2i loc = p_region_loc + (_region_map_size_v / 2);
+	// Catch values > 31
+	if ((uint32_t(loc.x | loc.y) & uint32_t(~0x1F)) > 0) {
+		return -1;
+	}
+	return loc.y * _region_map_size + loc.x;
 }
 
 void Terrain3DData::set_region_locations(const TypedArray<Vector2i> &p_locations) {
@@ -246,7 +265,7 @@ Error Terrain3DData::add_region(const Ref<Terrain3DRegion> &p_region, const bool
 	// Check bounds and slow report errors
 	if (get_region_map_index(region_loc) < 0) {
 		LOG(ERROR, "Location ", region_loc, " out of bounds. Max: ",
-				-REGION_MAP_SIZE / 2, " to ", REGION_MAP_SIZE / 2 - 1);
+				-_region_map_size / 2, " to ", _region_map_size / 2 - 1);
 		return FAILED;
 	}
 	p_region->sanitize_maps();
@@ -484,9 +503,9 @@ void Terrain3DData::update_maps(const MapType p_map_type, const bool p_all_regio
 
 	// Rebuild region map if dirty
 	if (_region_map_dirty) {
-		LOG(EXTREME, "Regenerating ", REGION_MAP_VSIZE, " region map array from active regions");
+		LOG(EXTREME, "Regenerating ", _region_map_size_v, " region map array from active regions");
 		_region_map.clear();
-		_region_map.resize(REGION_MAP_SIZE * REGION_MAP_SIZE);
+		_region_map.resize(_region_map_size * _region_map_size);
 		_region_map_dirty = false;
 		_region_locations = TypedArray<Vector2i>(); // enforce new pointer
 		Array locs = _regions.keys();
@@ -875,7 +894,7 @@ void Terrain3DData::import_images(const TypedArray<Image> &p_images, const Vecto
 	}
 
 	Vector3 descaled_position = p_global_position / _vertex_spacing;
-	int max_dimension = _region_size * REGION_MAP_SIZE / 2;
+	int max_dimension = _region_size * _region_map_size / 2;
 	if ((abs(descaled_position.x) > max_dimension) || (abs(descaled_position.z) > max_dimension)) {
 		LOG(ERROR, "Specify a position within +/-", Vector3(max_dimension, 0.f, max_dimension) * _vertex_spacing);
 		return;
@@ -919,8 +938,8 @@ void Terrain3DData::import_images(const TypedArray<Image> &p_images, const Vecto
 	// Slice up incoming image into segments of region_size^2, and pad any remainder
 	int slices_width = ceil(real_t(img_size.x) / real_t(_region_size));
 	int slices_height = ceil(real_t(img_size.y) / real_t(_region_size));
-	slices_width = CLAMP(slices_width, 1, REGION_MAP_SIZE);
-	slices_height = CLAMP(slices_height, 1, REGION_MAP_SIZE);
+	slices_width = CLAMP(slices_width, 1, _region_map_size);
+	slices_height = CLAMP(slices_height, 1, _region_map_size);
 	LOG(DEBUG, "Creating ", Vector2i(slices_width, slices_height), " slices for ", img_size, " images.");
 
 	for (int y = 0; y < slices_height; y++) {
@@ -1127,15 +1146,13 @@ void Terrain3DData::_bind_methods() {
 	BIND_ENUM_CONSTANT(HEIGHT_FILTER_NEAREST);
 	BIND_ENUM_CONSTANT(HEIGHT_FILTER_MINIMUM);
 
-	BIND_CONSTANT(REGION_MAP_SIZE);
-
 	ClassDB::bind_method(D_METHOD("get_region_count"), &Terrain3DData::get_region_count);
 	ClassDB::bind_method(D_METHOD("set_region_locations", "region_locations"), &Terrain3DData::set_region_locations);
 	ClassDB::bind_method(D_METHOD("get_region_locations"), &Terrain3DData::get_region_locations);
 	ClassDB::bind_method(D_METHOD("get_regions_active", "copy", "deep"), &Terrain3DData::get_regions_active, DEFVAL(false), DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("get_regions_all"), &Terrain3DData::get_regions_all);
 	ClassDB::bind_method(D_METHOD("get_region_map"), &Terrain3DData::get_region_map);
-	ClassDB::bind_static_method("Terrain3DData", D_METHOD("get_region_map_index", "region_location"), &Terrain3DData::get_region_map_index);
+	ClassDB::bind_method(D_METHOD("get_region_map_index", "region_location"), &Terrain3DData::get_region_map_index);
 
 	ClassDB::bind_method(D_METHOD("do_for_regions", "area", "callback"), &Terrain3DData::do_for_regions);
 	ClassDB::bind_method(D_METHOD("change_region_size", "region_size"), &Terrain3DData::change_region_size);
@@ -1166,6 +1183,8 @@ void Terrain3DData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("load_directory", "directory"), &Terrain3DData::load_directory);
 	ClassDB::bind_method(D_METHOD("load_region", "region_location", "directory", "update"), &Terrain3DData::load_region, DEFVAL(true));
 
+	ClassDB::bind_method(D_METHOD("set_region_map_size"), &Terrain3DData::set_region_map_size);
+	ClassDB::bind_method(D_METHOD("get_region_map_size"), &Terrain3DData::get_region_map_size);
 	ClassDB::bind_method(D_METHOD("get_height_maps"), &Terrain3DData::get_height_maps);
 	ClassDB::bind_method(D_METHOD("get_control_maps"), &Terrain3DData::get_control_maps);
 	ClassDB::bind_method(D_METHOD("get_color_maps"), &Terrain3DData::get_color_maps);
@@ -1220,6 +1239,7 @@ void Terrain3DData::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "height_maps", PROPERTY_HINT_ARRAY_TYPE, "Image", ro_flags), "", "get_height_maps");
 	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "control_maps", PROPERTY_HINT_ARRAY_TYPE, "Image", ro_flags), "", "get_control_maps");
 	ADD_PROPERTY(PropertyInfo(Variant::ARRAY, "color_maps", PROPERTY_HINT_ARRAY_TYPE, "Image", ro_flags), "", "get_color_maps");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "region_map_size", PROPERTY_HINT_RANGE, "1,32,1", ro_flags), "set_region_map_size", "get_region_map_size");
 
 	ADD_SIGNAL(MethodInfo("maps_changed"));
 	ADD_SIGNAL(MethodInfo("region_map_changed"));
