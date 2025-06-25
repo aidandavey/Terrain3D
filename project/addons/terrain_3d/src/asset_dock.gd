@@ -270,7 +270,7 @@ func _on_textures_pressed() -> void:
 	mesh_list.visible = false
 	textures_btn.button_pressed = true
 	meshes_btn.button_pressed = false
-	texture_list.set_selected_id(texture_list.selected_id)
+	texture_list.set_selected_ids(texture_list.selected_ids)
 	if plugin.is_terrain_valid():
 		EditorInterface.edit_node(plugin.terrain)
 	save_editor_settings()
@@ -283,7 +283,7 @@ func _on_meshes_pressed() -> void:
 	texture_list.visible = false
 	meshes_btn.button_pressed = true
 	textures_btn.button_pressed = false
-	mesh_list.set_selected_id(mesh_list.selected_id)
+	mesh_list.set_selected_ids(mesh_list.selected_ids)
 	if plugin.is_terrain_valid():
 		EditorInterface.edit_node(plugin.terrain)
 	update_thumbnails()
@@ -436,7 +436,7 @@ class ListContainer extends Container:
 	var plugin: EditorPlugin
 	var type := Terrain3DAssets.TYPE_TEXTURE
 	var entries: Array[ListEntry]
-	var selected_id: int = 0
+	var selected_ids: Dictionary = {}
 	var height: float = 0
 	var width: float = 83
 	var focus_style: StyleBox
@@ -476,6 +476,8 @@ class ListContainer extends Container:
 				add_item(texture)
 			if texture_count < Terrain3DAssets.MAX_TEXTURES:
 				add_item()
+			if selected_ids.size() >= texture_count or selected_ids.size() == 0:
+				set_id_selected(0)
 		else:
 			var mesh_count: int = t.assets.get_mesh_count()
 			for i in mesh_count:
@@ -483,10 +485,39 @@ class ListContainer extends Container:
 				add_item(mesh, t.assets)
 			if mesh_count < Terrain3DAssets.MAX_MESHES:
 				add_item()
-			if selected_id >= mesh_count or selected_id < 0:
-				set_selected_id(0)
+			if selected_ids.size() >= mesh_count or selected_ids.size() == 0:
+				set_id_selected(0)
+				
 
+	func update_selected_entries():
+		for i: int in entries.size():
+			var entry: ListEntry = entries[i]
+			entry.set_selected(i in selected_ids)
+		plugin.ui._on_setting_changed()
 
+	func set_id_selected(p_id: int, p_clear_previous_selection: bool = false):
+		if type == Terrain3DAssets.TYPE_TEXTURE:
+			selected_ids.clear()
+			selected_ids[p_id] = null		
+			update_selected_entries()
+			print(selected_ids)
+			return
+			
+		if selected_ids.has(p_id):
+			set_id_deselected(p_id)
+		else:
+			if p_clear_previous_selection:
+				selected_ids.clear()
+			selected_ids[p_id] = null		
+			update_selected_entries()
+
+	func set_id_deselected(p_id: int):
+		if selected_ids.size() > 1:
+			if selected_ids.has(p_id):
+				selected_ids.erase(p_id)
+			update_selected_entries()
+		
+			
 	func add_item(p_resource: Resource = null, p_assets: Terrain3DAssets = null) -> void:
 		var entry: ListEntry = ListEntry.new()
 		entry.focus_style = focus_style
@@ -494,7 +525,7 @@ class ListContainer extends Container:
 		
 		entry.set_edited_resource(p_resource)
 		entry.hovered.connect(_on_resource_hovered.bind(id))
-		entry.selected.connect(set_selected_id.bind(id))
+		entry.selected.connect(set_id_selected.bind(id))
 		entry.inspected.connect(_on_resource_inspected)
 		entry.changed.connect(_on_resource_changed.bind(id))
 		entry.type = type
@@ -503,7 +534,7 @@ class ListContainer extends Container:
 		entries.push_back(entry)
 		
 		if p_resource:
-			entry.set_selected(id == selected_id)
+			set_id_selected(id, true)
 			if not p_resource.id_changed.is_connected(set_selected_after_swap):
 				p_resource.id_changed.connect(set_selected_after_swap)
 
@@ -515,15 +546,15 @@ class ListContainer extends Container:
 
 	
 	func set_selected_after_swap(p_type: Terrain3DAssets.AssetType, p_old_id: int, p_new_id: int) -> void:
-		set_selected_id(clamp(p_new_id, 0, entries.size() - 2))
+		# TODO: Investigate if this is still needed with multiselect
+		pass#set_selected_ids(clamp(p_new_id, 0, entries.size() - 2))
 
 
-	func set_selected_id(p_id: int) -> void:
-		selected_id = p_id
+	func set_selected_ids(p_id: Dictionary) -> void:
 		
 		for i in entries.size():
 			var entry: ListEntry = entries[i]
-			entry.set_selected(i == selected_id)
+			entry.set_selected(i in selected_ids)
 		
 		plugin.select_terrain()
 
@@ -584,11 +615,11 @@ class ListContainer extends Container:
 			var last_offset: int = 2
 			if p_id == entries.size()-2:
 				last_offset = 3
-			set_selected_id(clamp(selected_id, 0, entries.size() - last_offset))
+			set_id_deselected(p_id)
 
 
-	func get_selected_id() -> int:
-		return selected_id
+	func get_selected_ids() -> Dictionary:
+		return selected_ids
 
 
 	func set_entry_width(value: float) -> void:
@@ -866,7 +897,8 @@ class ListEntry extends VBoxContainer:
 	func set_selected(value: bool) -> void:
 		is_selected = value
 		queue_redraw()
-
+		
+		
 
 	func clear() -> void:
 		if resource:
