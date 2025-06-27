@@ -40,6 +40,10 @@ private:
 	Ref<PackedScene> _packed_scene;
 	GenType _generated_type = TYPE_NONE;
 
+	// Scene instancing
+	Ref<PackedScene> _instancer_scene;
+	TypedArray<Node> terrain_3d_objects;
+
 	real_t _height_offset = 0.f;
 	real_t _density = 10.f;
 	ShadowCasting _cast_shadows = SHADOWS_ON;
@@ -72,6 +76,11 @@ public:
 	void set_id(const int p_new_id) override;
 	int get_id() const override { return _id; }
 	void set_enabled(const bool p_enabled);
+
+	Ref<PackedScene> get_instancer_scene_file();
+
+	void set_instancer_scene_file(const Ref<PackedScene> &p_scene_file);
+
 	bool is_enabled() const { return _enabled; }
 
 	void set_scene_file(const Ref<PackedScene> &p_scene_file);

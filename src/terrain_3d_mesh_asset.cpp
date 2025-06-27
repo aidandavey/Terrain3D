@@ -162,6 +162,15 @@ void Terrain3DMeshAsset::set_enabled(const bool p_enabled) {
 	emit_signal("instancer_setting_changed");
 }
 
+Ref<PackedScene> Terrain3DMeshAsset::get_instancer_scene_file() {
+	return _instancer_scene;
+}
+
+void Terrain3DMeshAsset::set_instancer_scene_file(const Ref<PackedScene> &p_scene_file) {
+	LOG(INFO, "Setting scene file and instantiating node: ", p_scene_file);
+	_instancer_scene = p_scene_file;
+}
+
 void Terrain3DMeshAsset::set_scene_file(const Ref<PackedScene> &p_scene_file) {
 	LOG(INFO, "Setting scene file and instantiating node: ", p_scene_file);
 	_packed_scene = p_scene_file;
@@ -474,6 +483,8 @@ void Terrain3DMeshAsset::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_scene_file", "scene_file"), &Terrain3DMeshAsset::set_scene_file);
 	ClassDB::bind_method(D_METHOD("get_scene_file"), &Terrain3DMeshAsset::get_scene_file);
+	ClassDB::bind_method(D_METHOD("set_instancer_scene_file", "scene_file"), &Terrain3DMeshAsset::set_instancer_scene_file);
+	ClassDB::bind_method(D_METHOD("get_instancer_scene_file"), &Terrain3DMeshAsset::get_instancer_scene_file);
 	ClassDB::bind_method(D_METHOD("set_generated_type", "type"), &Terrain3DMeshAsset::set_generated_type);
 	ClassDB::bind_method(D_METHOD("get_generated_type"), &Terrain3DMeshAsset::get_generated_type);
 	ClassDB::bind_method(D_METHOD("get_mesh", "lod"), &Terrain3DMeshAsset::get_mesh, DEFVAL(0));
@@ -531,6 +542,7 @@ void Terrain3DMeshAsset::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "id", PROPERTY_HINT_NONE), "set_id", "get_id");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "enabled", PROPERTY_HINT_NONE), "set_enabled", "is_enabled");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "scene_file", PROPERTY_HINT_RESOURCE_TYPE, "PackedScene"), "set_scene_file", "get_scene_file");
+	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "instancer_scene_file", PROPERTY_HINT_RESOURCE_TYPE, "PackedScene"), "set_instancer_scene_file", "get_instancer_scene_file");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "generated_type", PROPERTY_HINT_ENUM, "None,Texture Card"), "set_generated_type", "get_generated_type");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "height_offset", PROPERTY_HINT_RANGE, "-20.0,20.0,.005"), "set_height_offset", "get_height_offset");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "density", PROPERTY_HINT_RANGE, ".01,10.0,.005"), "set_density", "get_density");

@@ -44,6 +44,8 @@ private:
 
 	void _update_mmis(const Vector2i &p_region_loc = V2I_MAX, const int p_mesh_id = -1);
 	void _update_vertex_spacing(const real_t p_vertex_spacing);
+	void clear_instanced_scenes();
+	void instance_scenes(Ref<PackedScene> &p_scene, const TypedArray<Transform3D> &p_xforms, const Transform3D &p_region_pos);
 	void _destroy_mmi_by_cell(const Vector2i &p_region_loc, const int p_mesh_id, const Vector2i p_cell);
 	void _destroy_mmi_by_location(const Vector2i &p_region_loc, const int p_mesh_id);
 	void _backup_regionl(const Vector2i &p_region_loc);
@@ -51,6 +53,8 @@ private:
 	Ref<MultiMesh> _create_multimesh(const int p_mesh_id, const int p_lod, const TypedArray<Transform3D> &p_xforms = TypedArray<Transform3D>(), const PackedColorArray &p_colors = PackedColorArray()) const;
 	Vector2i _get_cell(const Vector3 &p_global_position, const int p_region_size);
 	void _setup_mmi_lod_ranges(MultiMeshInstance3D *p_mmi, const Ref<Terrain3DMeshAsset> &p_ma, const int p_lod);
+
+	TypedArray<Node> _instanced_nodes;
 
 public:
 	Terrain3DInstancer() {}

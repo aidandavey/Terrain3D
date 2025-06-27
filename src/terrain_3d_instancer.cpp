@@ -18,6 +18,8 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 	LOG(INFO, "Updating MMIs for ", (p_region_loc.x == INT32_MAX) ? "all regions" : "region " + String(p_region_loc),
 			(p_mesh_id == -1) ? ", all meshes" : ", mesh " + String::num_int64(p_mesh_id));
 
+	clear_instanced_scenes();
+
 	// For specified region_location, or max for all
 	Array region_locations;
 	if (p_region_loc.x == INT32_MAX) {
@@ -32,6 +34,10 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 			LOG(WARN, "Errant null region found at: ", region_loc);
 			continue;
 		}
+
+		Transform3D region_xform;
+		region_xform.origin = v2v3(region_loc) * _terrain->get_region_size() * _terrain->get_vertex_spacing();
+
 		Dictionary mesh_inst_dict = region->get_instances();
 
 		// For specified mesh id in that region, or -1 for all
@@ -59,6 +65,8 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 				continue;
 			}
 
+			Ref<PackedScene> scene_to_instance = ma->get_instancer_scene_file();
+
 			Dictionary cell_inst_dict = mesh_inst_dict[mesh_id];
 			Array cell_locations = cell_inst_dict.keys();
 			for (int c = 0; c < cell_locations.size(); c++) {
@@ -75,6 +83,13 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 				if (xforms.size() == 0) {
 					LOG(WARN, "Empty cell in region ", region_loc, " cell ", cell);
 					continue;
+				}
+
+				if (scene_to_instance.is_valid()) {
+					instance_scenes(scene_to_instance, xforms, region_xform);
+					continue;
+				} else {
+					LOG(WARN, "No valid scene to instance, proceeding to MMIs");
 				}
 
 				// Create MMI container if needed
@@ -251,6 +266,39 @@ void Terrain3DInstancer::_update_vertex_spacing(const real_t p_vertex_spacing) {
 	}
 	destroy();
 	_update_mmis();
+}
+
+void Terrain3DInstancer::clear_instanced_scenes() {
+	for (int i = 0; i < _instanced_nodes.size(); i++) {
+		Node *node = cast_to<Node>(_instanced_nodes[i]);
+		node->queue_free();
+	}
+	_instanced_nodes.clear();
+}
+
+void Terrain3DInstancer::instance_scenes(Ref<PackedScene> &p_scene, const TypedArray<Transform3D> &p_xforms, const Transform3D &p_region_pos) {
+	for (int i = 0; i < p_xforms.size(); i++) {
+		//Node3D *new_node = memnew(Node3D);
+
+		Node *node = p_scene->instantiate();
+
+		Node3D *node_3d = cast_to<Node3D>(node);
+
+		if (!node_3d) {
+			LOG(ERROR, "Failed to instantiate packed scene");
+			return;
+		}
+
+		Transform3D instance_xform = p_xforms[i];
+		instance_xform = p_region_pos * instance_xform;
+
+		LOG(MESG, "Instancing scene at ", instance_xform.origin);
+
+		_instanced_nodes.push_back(node);
+		_instanced_nodes.push_back(node_3d);
+		_terrain->add_child(node_3d);
+		node_3d->set_global_transform(instance_xform);
+	}
 }
 
 void Terrain3DInstancer::_destroy_mmi_by_cell(const Vector2i &p_region_loc, const int p_mesh_id, const Vector2i p_cell) {
