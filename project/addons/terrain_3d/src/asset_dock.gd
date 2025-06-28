@@ -761,7 +761,7 @@ class ListEntry extends VBoxContainer:
 		count_label.add_theme_color_override("font_shadow_color", Color.BLACK)
 		count_label.add_theme_constant_override("shadow_offset_x", 1.)
 		count_label.add_theme_constant_override("shadow_offset_y", 1.)
-		count_label.add_theme_font_size_override("font_size", 18)
+		count_label.add_theme_font_size_override("font_size", 14)
 		count_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		count_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		count_label.text = str(0)
