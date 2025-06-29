@@ -35,6 +35,12 @@ private:
 	typedef std::unordered_map<Vector2i, CellMMIDict, Vector2iHash> MeshMMIDict;
 	std::unordered_map<Vector2i, MeshMMIDict, Vector2iHash> _mmi_nodes;
 
+	// Compute data
+	Dictionary _mmi_command_buffers;
+	Dictionary _mmi_transform_buffers;
+	RenderingDevice *_rd;
+
+
 	// Region MMI containers named Terrain3D/MMI/Region* are stored here as
 	//_mmi_containers{region_loc} -> Node3D
 	//std::unordered_map<Vector2i, RID, Vector2iHash> _mmi_containers;
@@ -49,6 +55,8 @@ private:
 	void _backup_region(const Ref<Terrain3DRegion> &p_region);
 	RID _create_multimesh(const int p_mesh_id, const int p_lod, const TypedArray<Transform3D> &p_xforms = TypedArray<Transform3D>(), const PackedColorArray &p_colors = PackedColorArray()) const;
 	Vector2i _get_cell(const Vector3 &p_global_position, const int p_region_size);
+	void setup_compute();
+	void update_compute();
 	void _setup_mmi_lod_ranges(const RID &p_mm, const Ref<Terrain3DMeshAsset> &p_ma, const int p_lod);
 
 public:

@@ -124,6 +124,8 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 						mm = shadow_impostor_source_mm;
 					} else {
 						mm = _create_multimesh(mesh_id, lod, xforms, colors);
+						_mmi_command_buffers[mm] = RS->multimesh_get_command_buffer_rd_rid(mm);
+						_mmi_transform_buffers[mm] = RS->multimesh_get_buffer_rd_rid(mm);
 					}
 					if (!mm.is_valid()) {
 						LOG(ERROR, "Failed to create MultiMesh for mesh_id: ", mesh_id, ", lod: ", lod);
@@ -340,6 +342,15 @@ Vector2i Terrain3DInstancer::_get_cell(const Vector3 &p_global_position, const i
 	cell.x = UtilityFunctions::posmod(UtilityFunctions::floori(p_global_position.x / vertex_spacing), p_region_size) / CELL_SIZE;
 	cell.y = UtilityFunctions::posmod(UtilityFunctions::floori(p_global_position.z / vertex_spacing), p_region_size) / CELL_SIZE;
 	return cell;
+}
+
+void Terrain3DInstancer::setup_compute() {
+	_rd = RS->get_rendering_device();
+}
+
+void Terrain3DInstancer::update_compute() {
+
+
 }
 
 ///////////////////////////
