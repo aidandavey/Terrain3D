@@ -39,6 +39,8 @@ private:
 	// _mmi_containers{region_loc} -> Node3D
 	std::unordered_map<Vector2i, Node3D *, Vector2iHash> _mmi_containers;
 
+	Dictionary _mmi_command_buffers = {};
+
 	uint32_t _density_counter = 0;
 	uint32_t _get_density_count(const real_t p_density);
 

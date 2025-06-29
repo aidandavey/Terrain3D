@@ -359,6 +359,8 @@ Ref<MultiMesh> Terrain3DInstancer::_create_multimesh(const int p_mesh_id, const 
 			}
 		}
 	}
+	
+	_mmi_command_buffers[mm->get_rid()] = RS->multimesh_get_command_buffer_rd_rid(mm->get_rid());
 	return mm;
 }
 
