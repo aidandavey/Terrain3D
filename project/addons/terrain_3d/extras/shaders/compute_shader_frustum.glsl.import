@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://pwsfqmndobgr"
+path="res://.godot/imported/compute_shader_frustum.glsl-15d18d6e637d870c6db4a9f06b8b934f.res"
+
+[deps]
+
+source_file="res://addons/terrain_3d/extras/shaders/compute_shader_frustum.glsl"
+dest_files=["res://.godot/imported/compute_shader_frustum.glsl-15d18d6e637d870c6db4a9f06b8b934f.res"]
+
+[params]
+

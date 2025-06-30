@@ -44,7 +44,7 @@ private:
 	Dictionary _mm_uniform_sets;
 	Dictionary _mm_input_transform_buffers;
 	Dictionary _mm_instance_count;
-	Dictionary _mm_dynamic_count;
+	Dictionary _mm_dynamic_count_buffers;
 
 	RenderingDevice *_rd;
 	bool _compute_active = false;

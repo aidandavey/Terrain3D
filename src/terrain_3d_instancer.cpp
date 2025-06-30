@@ -410,6 +410,11 @@ void Terrain3DInstancer::_compute_setup(const RID &multimesh) {
 	_uniform->add_id(command_buffer);
 	mergeUniformArray.push_back(_uniform);
 
+	if (!_uniform.is_valid()) {
+		LOG(ERROR, "Could not set command buffer uniform");
+		return;
+	}
+
 	PackedByteArray xform_buffer = input_transform_buffer.to_byte_array();
 	RID input_transform_buffer_rid = _rd->storage_buffer_create(xform_buffer.size(), xform_buffer);
 
@@ -420,12 +425,22 @@ void Terrain3DInstancer::_compute_setup(const RID &multimesh) {
 	_input_tranform_uniform->add_id(input_transform_buffer_rid);
 	mergeUniformArray.push_back(_input_tranform_uniform);
 
+	if (!_input_tranform_uniform.is_valid()) {
+		LOG(ERROR, "Could not set input transform buffer uniform");
+		return;
+	}
+
 	Ref<RDUniform> _transformuniform; //	= new RDUniform();
 	_transformuniform.instantiate();
 	_transformuniform->set_uniform_type(RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
 	_transformuniform->set_binding(2);
 	_transformuniform->add_id(transform_buffer);
 	mergeUniformArray.push_back(_transformuniform);
+
+	if (!_transformuniform.is_valid()) {
+		LOG(ERROR, "Could not set transform buffer uniform");
+		return;
+	}
 
 	PackedInt32Array counter_buff;
 	counter_buff.push_back(RS->multimesh_get_instance_count(multimesh));
@@ -439,9 +454,15 @@ void Terrain3DInstancer::_compute_setup(const RID &multimesh) {
 	_counteruniform->add_id(counterBuffer);
 	mergeUniformArray.push_back(_counteruniform);
 
-	_mm_dynamic_count[multimesh] = counterBuffer;
+	if (!_counteruniform.is_valid()) {
+		LOG(ERROR, "Could not set counter buffer uniform");
+		return;
+	}
+
+	_mm_dynamic_count_buffers[multimesh] = counterBuffer;
 
 	if (!_compute_shader_file.is_valid()) {
+		LOG(MESG, "Loading shader file");
 		_compute_shader_file = ResourceLoader::get_singleton()->load("addons/terrain_3d/extras/shaders/compute_shader_frustum.glsl");
 	}
 	if (!_compute_shader_file.is_valid()) {
@@ -449,11 +470,16 @@ void Terrain3DInstancer::_compute_setup(const RID &multimesh) {
 		return;
 	}
 
+	if (!_compute_shader_file->get_spirv().is_valid()) {
+		LOG(ERROR, "Shader SPIR-V is empty or failed to compile.");
+		return;
+	}
 	if (!_shader_rid.is_valid()) {
+		LOG(MESG, "Creating shader from SPIR-V");
 		_shader_rid = _rd->shader_create_from_spirv(_compute_shader_file->get_spirv());
 	}
 	if (!_shader_rid.is_valid()) {
-		LOG(ERROR, "Failed to create shader from spirv.");
+		LOG(ERROR, "Failed to create shader from SPIR-V.");
 		return;
 	}
 
@@ -470,6 +496,12 @@ void Terrain3DInstancer::_compute_setup(const RID &multimesh) {
 		LOG(ERROR, "Failed to create pipeline from shader.");
 		return;
 	}
+
+	if (!_rd->compute_pipeline_is_valid(compute_pipeline)) {
+		LOG(ERROR, "Invalid pipeline for ", multimesh, " : ", compute_pipeline);
+		return;
+	}
+
 
 	_mm_compute_pipelines[multimesh] = compute_pipeline;
 
@@ -488,35 +520,22 @@ void Terrain3DInstancer::_compute_update() {
 
 void Terrain3DInstancer::_compute_update_mm(const RID &mm) {
 	if (!_compute_initialized) {
-		LOG(WARN, "Compute not initialized");
+		LOG(ERROR, "Compute not initialized");
 		return;
 	}
 
 	_compute_active = true;
 
-	// DEBUGGING
-	PackedByteArray instance_count_buffer = _rd->buffer_get_data(_mm_dynamic_count[mm]);
-	int instance_count = instance_count_buffer.to_int32_array()[0];
-
-	int original_instance_count = _mm_instance_count[mm];
-
-	if (instance_count > original_instance_count) {
-		LOG(EXTREME, "Got more instances back than were sent!");
-	}
-
-	if (original_instance_count > 0 && instance_count == 0) {
-		LOG(EXTREME, "All ", original_instance_count, " instances were culled")
-	} else if (instance_count < original_instance_count) {
-		LOG(EXTREME, original_instance_count - instance_count, " were culled. ", instance_count, " remaining.");
-	}
-
-	//
-	//
-
 	PackedFloat32Array newArray;
 	newArray.resize(28);
 
 	RID compute_pipeline = _mm_compute_pipelines[mm];
+
+	if (!_rd->compute_pipeline_is_valid(compute_pipeline)) {
+		LOG(ERROR, "Invalid pipeline for ", mm, " : ", compute_pipeline);
+		return;
+	}
+
 	RID uniform_set_rid = _mm_uniform_sets[mm];
 
 	int64_t compute_list = _rd->compute_list_begin();
@@ -529,7 +548,6 @@ void Terrain3DInstancer::_compute_update_mm(const RID &mm) {
 		return;
 	}
 
-	//float sineResult = Mathf.Clamp((Mathf.Sin(IterationValue) + 1.0f) / 2.0f, 0.0f, 1.0f);
 	if (updatingFrustum) {
 		lastFrustum = player_cam->get_frustum();
 	}
