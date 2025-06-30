@@ -1,9 +1,9 @@
 // Copyright © 2025 Cory Petkovsek, Roope Palmroos, and Contributors.
 
+#include <godot_cpp/classes/rd_shader_spirv.hpp>
+#include <godot_cpp/classes/rd_uniform.hpp>
 #include <godot_cpp/classes/resource_saver.hpp>
 #include <godot_cpp/classes/world3d.hpp>
-#include <godot_cpp/classes/rd_uniform.hpp>
-#include <godot_cpp/classes/rd_shader_spirv.hpp>
 
 #include "constants.h"
 #include "logger.h"
@@ -137,7 +137,7 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 						RS->multimesh_allocate_data(mm, xforms.size(), RS->MULTIMESH_TRANSFORM_3D, true, false, true);
 						RS->multimesh_set_mesh(mm, mesh->get_rid());
 
-						if (xforms.size() > 0) {							
+						if (xforms.size() > 0) {
 							//mm->set_instance_count(xforms.size());
 							for (int i = 0; i < xforms.size(); i++) {
 								RS->multimesh_instance_set_transform(mm, i, xforms[i]);
@@ -146,12 +146,14 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 								}
 							}
 						}
-						_compute_setup(mm);
 					}
 					if (!mm.is_valid()) {
 						LOG(ERROR, "Failed to create MultiMesh for mesh_id: ", mesh_id, ", lod: ", lod);
 						continue;
 					}
+
+					_compute_setup(mm);
+
 					// If LOD is shadow impostor, save it to use in shadow MMI
 					if (lod == ma->get_shadow_impostor()) {
 						shadow_impostor_source_mm = mm;
@@ -202,7 +204,7 @@ void Terrain3DInstancer::_setup_mmi_lod_ranges(const RID &p_mmi, const Ref<Terra
 		// MMI ranges have gaps. Some users experienced worse gaps with billboards (assumed to be last lod)
 		real_t lod_begin = p_ma->get_lod_range_begin(p_lod);
 		real_t lod_end = p_ma->get_lod_range_end(p_lod);
-		float lod_overlap = (p_lod < p_ma->get_last_lod() - 1) ? 1.0005f : 1.0024f;		
+		float lod_overlap = (p_lod < p_ma->get_last_lod() - 1) ? 1.0005f : 1.0024f;
 		RS->instance_geometry_set_visibility_range(p_mmi, lod_begin, lod_end * lod_overlap, 0.0, 0.0, RenderingServer::VISIBILITY_RANGE_FADE_DISABLED);
 	}
 }
@@ -345,8 +347,6 @@ RID Terrain3DInstancer::_create_multimesh(const int p_mesh_id, const int p_lod, 
 	RS->multimesh_allocate_data(mm, p_xforms.size(), RS->MULTIMESH_TRANSFORM_3D, true, false, true);
 	RS->multimesh_set_mesh(mm, mesh->get_rid());
 
-	
-
 	if (p_xforms.size() > 0) {
 		//mm->set_instance_count(p_xforms.size());
 		for (int i = 0; i < p_xforms.size(); i++) {
@@ -369,72 +369,159 @@ Vector2i Terrain3DInstancer::_get_cell(const Vector3 &p_global_position, const i
 }
 
 void Terrain3DInstancer::_compute_setup(const RID &multimesh) {
+	if (!multimesh.is_valid()) {
+		LOG(ERROR, "Can't set up compute for invalid multimesh");
+		return;
+	}
 
 	_compute_active = true;
-	_surface_count = RS->mesh_get_surface_count(multimesh);
-	//emptyBuffer = new float[(BladeCount + 1) * 16];
-	//RenderingServer.MultimeshSetMesh(multimesh, TestMesh.GetRid());
-	//Vector3 aabb = Vector3(InstanceCount * 5.0f, 1000.0f, InstanceCount * 5.0f);
-	//RenderingServer.InstanceSetCustomAabb(instance, new Aabb(Vector3.Zero, aabb));
-	//Transform3D instanceTransform = Transform3D.Identity;
-	//RenderingServer.InstanceSetTransform(instance, instanceTransform);
-	//RenderingServer.InstanceSetScenario(instance, scenario);
-	//RenderingServer.InstanceSetBase(instance, multimesh);
-	//RenderingServer.InstanceGeometrySetFlag(instance, RenderingServer.InstanceFlags.UseDynamicGI, UseGI);
-	//RenderingServer.InstanceGeometrySetCastShadowsSetting(instance, UseShadows ? RenderingServer.ShadowCastingSetting.On : RenderingServer.ShadowCastingSetting.Off);
 
 	RID transform_buffer = RS->multimesh_get_buffer_rd_rid(multimesh);
+	if (!transform_buffer.is_valid()) {
+		LOG(ERROR, "Failed to get transform buffer for multimesh ", multimesh);
+		return;
+	}
+
+	PackedFloat32Array input_transform_buffer = RS->multimesh_get_buffer(multimesh);
+
 	RID command_buffer = RS->multimesh_get_command_buffer_rd_rid(multimesh);
+	if (!command_buffer.is_valid()) {
+		LOG(ERROR, "Failed to get command buffer for multimesh ", command_buffer);
+		return;
+	}
 
 	_mmi_command_buffers[multimesh] = command_buffer;
 	_mmi_transform_buffers[multimesh] = transform_buffer;
+	_mm_instance_count[multimesh] = RS->multimesh_get_instance_count(multimesh);
 
 	_rd = RS->get_rendering_device();
 
-	Array mergeUniformArray;
+	if (!_rd) {
+		LOG(ERROR, "Failed to get global rendering device.");
+		return;
+	}
 
-	Ref<RDUniform> _uniform;//	= new RDUniform();
+	TypedArray<RDUniform> mergeUniformArray;
+
+	Ref<RDUniform> _uniform;
 	_uniform.instantiate();
 	_uniform->set_uniform_type(RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
 	_uniform->set_binding(0);
 	_uniform->add_id(command_buffer);
-	mergeUniformArray.append(_uniform);
+	mergeUniformArray.push_back(_uniform);
 
+	PackedByteArray xform_buffer = input_transform_buffer.to_byte_array();
+	RID input_transform_buffer_rid = _rd->storage_buffer_create(xform_buffer.size(), xform_buffer);
+
+	Ref<RDUniform> _input_tranform_uniform; //	= new RDUniform();
+	_input_tranform_uniform.instantiate();
+	_input_tranform_uniform->set_uniform_type(RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+	_input_tranform_uniform->set_binding(1);
+	_input_tranform_uniform->add_id(input_transform_buffer_rid);
+	mergeUniformArray.push_back(_input_tranform_uniform);
 
 	Ref<RDUniform> _transformuniform; //	= new RDUniform();
 	_transformuniform.instantiate();
 	_transformuniform->set_uniform_type(RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-	_transformuniform->set_binding(1);
+	_transformuniform->set_binding(2);
 	_transformuniform->add_id(transform_buffer);
-	mergeUniformArray.append(_transformuniform);
+	mergeUniformArray.push_back(_transformuniform);
 
-	RID counterBuffer = _rd->storage_buffer_create(sizeof(uint32_t));
+	PackedInt32Array counter_buff;
+	counter_buff.push_back(RS->multimesh_get_instance_count(multimesh));
+
+	RID counterBuffer = _rd->storage_buffer_create(sizeof(uint32_t), counter_buff.to_byte_array());
 
 	Ref<RDUniform> _counteruniform; //	= new RDUniform();
 	_counteruniform.instantiate();
 	_counteruniform->set_uniform_type(RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
-	_counteruniform->set_binding(2);
+	_counteruniform->set_binding(3);
 	_counteruniform->add_id(counterBuffer);
-	mergeUniformArray.append(_counteruniform);
+	mergeUniformArray.push_back(_counteruniform);
 
-	_compute_shader_file = ResourceLoader::get_singleton()->load("shaders/atomicadd_compute_shader.glsl");
+	_mm_dynamic_count[multimesh] = counterBuffer;
 
-	_shader_rid = _rd->shader_create_from_spirv(_compute_shader_file->get_spirv());
-	_uniform_set_rid = _rd->uniform_set_create(mergeUniformArray, _shader_rid, 0);
-	_compute_pipeline = _rd->compute_pipeline_create(_shader_rid);
+	if (!_compute_shader_file.is_valid()) {
+		_compute_shader_file = ResourceLoader::get_singleton()->load("addons/terrain_3d/extras/shaders/compute_shader_frustum.glsl");
+	}
+	if (!_compute_shader_file.is_valid()) {
+		LOG(ERROR, "Failed to load compute shader file.");
+		return;
+	}
+
+	if (!_shader_rid.is_valid()) {
+		_shader_rid = _rd->shader_create_from_spirv(_compute_shader_file->get_spirv());
+	}
+	if (!_shader_rid.is_valid()) {
+		LOG(ERROR, "Failed to create shader from spirv.");
+		return;
+	}
+
+	RID uniform_set_rid = _rd->uniform_set_create(mergeUniformArray, _shader_rid, 0);
+	if (!uniform_set_rid.is_valid()) {
+		LOG(ERROR, "Failed to create valid uniform set");
+		return;
+	}
+
+	_mm_uniform_sets[multimesh] = uniform_set_rid;
+
+	RID compute_pipeline = _rd->compute_pipeline_create(_shader_rid);
+	if (!compute_pipeline.is_valid()) {
+		LOG(ERROR, "Failed to create pipeline from shader.");
+		return;
+	}
+
+	_mm_compute_pipelines[multimesh] = compute_pipeline;
+
 	//ComputeCallable = Callable.From(() = > { ExecuteComputeTest(); });
+	_compute_initialized = true;
 	_compute_active = false;
 }
 
 void Terrain3DInstancer::_compute_update() {
-	_compute_active = true;
-	
-	PackedFloat32Array newArray;
-	newArray.resize(32);
+	Array mmi_keys = _mmi_command_buffers.keys();
+	for (int i = 0; i < mmi_keys.size(); i++) {
+		RID mm_rid = mmi_keys[i];
+		_compute_update_mm(mm_rid);
+	}
+}
 
-	long ComputeList = _rd->compute_list_begin();
-	_rd->compute_list_bind_compute_pipeline(ComputeList, _compute_pipeline);
-	_rd->compute_list_bind_uniform_set(ComputeList, _uniform_set_rid, 0);
+void Terrain3DInstancer::_compute_update_mm(const RID &mm) {
+	if (!_compute_initialized) {
+		LOG(WARN, "Compute not initialized");
+		return;
+	}
+
+	_compute_active = true;
+
+	// DEBUGGING
+	PackedByteArray instance_count_buffer = _rd->buffer_get_data(_mm_dynamic_count[mm]);
+	int instance_count = instance_count_buffer.to_int32_array()[0];
+
+	int original_instance_count = _mm_instance_count[mm];
+
+	if (instance_count > original_instance_count) {
+		LOG(EXTREME, "Got more instances back than were sent!");
+	}
+
+	if (original_instance_count > 0 && instance_count == 0) {
+		LOG(EXTREME, "All ", original_instance_count, " instances were culled")
+	} else if (instance_count < original_instance_count) {
+		LOG(EXTREME, original_instance_count - instance_count, " were culled. ", instance_count, " remaining.");
+	}
+
+	//
+	//
+
+	PackedFloat32Array newArray;
+	newArray.resize(28);
+
+	RID compute_pipeline = _mm_compute_pipelines[mm];
+	RID uniform_set_rid = _mm_uniform_sets[mm];
+
+	int64_t compute_list = _rd->compute_list_begin();
+	_rd->compute_list_bind_compute_pipeline(compute_list, compute_pipeline);
+	_rd->compute_list_bind_uniform_set(compute_list, uniform_set_rid, 0);
 
 	Camera3D *player_cam = _terrain->get_camera();
 	if (!player_cam) {
@@ -448,7 +535,6 @@ void Terrain3DInstancer::_compute_update() {
 	}
 
 	int index = 0;
-	int cleanuppassIndex = 0;
 	for (int i = 0; i < lastFrustum.size(); i++) {
 		Plane plane = lastFrustum[i];
 		newArray[index] = plane.get_normal().x;
@@ -460,31 +546,16 @@ void Terrain3DInstancer::_compute_update() {
 		newArray[index] = plane.d;
 		index += 1;
 	}
-	cleanuppassIndex = index;
-	newArray[index] = 0;
-	index += 1;
-	newArray[index] = _surface_count;
-	index += 1;
-	newArray[index] = 4000.0f;
-	index += 1;
-	newArray[index] = player_cam->get_global_position().x;
-	index += 1;
-	newArray[index] = player_cam->get_global_position().y;
-	index += 1;
-	newArray[index] = player_cam->get_global_position().z;
 
-	PackedByteArray testByteArray;// = new byte[newArray.Length * 4];
-	testByteArray.resize(newArray.size() * 4);
-	
-	testByteArray = newArray.to_byte_array();
-	
-	_rd->compute_list_set_push_constant(ComputeList, testByteArray, testByteArray.size());
+	newArray[index] = real_t(_mm_instance_count[mm]);
 
-	_rd->compute_list_dispatch(ComputeList, 1, 1, 1);
+	PackedByteArray testByteArray = newArray.to_byte_array();
+
+	_rd->compute_list_set_push_constant(compute_list, testByteArray, testByteArray.size());
+	_rd->compute_list_dispatch(compute_list, 64, 1, 1);
 	_rd->compute_list_end();
 
 	_compute_active = false;
-
 }
 
 ///////////////////////////
@@ -1243,6 +1314,6 @@ void Terrain3DInstancer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("swap_ids", "src_id", "dest_id"), &Terrain3DInstancer::swap_ids);
 	ClassDB::bind_method(D_METHOD("dump_data"), &Terrain3DInstancer::dump_data);
 	ClassDB::bind_method(D_METHOD("dump_mmis"), &Terrain3DInstancer::dump_mmis);
-	ClassDB::bind_method(D_METHOD("get_compute_shader_file"), &Terrain3DInstancer::get_compute_shader_file);
-	ClassDB::bind_method(D_METHOD("set_compute_shader_file", "file"), &Terrain3DInstancer::set_compute_shader_file);
+	ClassDB::bind_method(D_METHOD("get_is_updating_frustum"), &Terrain3DInstancer::get_is_updating_frustum);
+	ClassDB::bind_method(D_METHOD("set_is_updating_frustum", "update_state"), &Terrain3DInstancer::set_is_updating_frustum);
 }

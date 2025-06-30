@@ -39,15 +39,24 @@ private:
 	// Compute data
 	Dictionary _mmi_command_buffers;
 	Dictionary _mmi_transform_buffers;
+	Dictionary _mm_compute_pipelines;
+	Dictionary _mm_uniforms;
+	Dictionary _mm_uniform_sets;
+	Dictionary _mm_input_transform_buffers;
+	Dictionary _mm_instance_count;
+	Dictionary _mm_dynamic_count;
+
 	RenderingDevice *_rd;
 	bool _compute_active = false;
 	RID _shader_rid;
 	Ref<RDShaderFile> _compute_shader_file;
-	RID _uniform_set_rid;
-	RID _compute_pipeline;
+	//RID _uniform_set_rid;
+	//RID _compute_pipeline;
 	bool updatingFrustum = true;
 	TypedArray<Plane> lastFrustum;
 	int32_t _surface_count = 0;
+	bool _compute_initialized = false;
+
 	// Region MMI containers named Terrain3D/MMI/Region* are stored here as
 	//_mmi_containers{region_loc} -> Node3D
 	//std::unordered_map<Vector2i, RID, Vector2iHash> _mmi_containers;
@@ -63,6 +72,7 @@ private:
 	RID _create_multimesh(const int p_mesh_id, const int p_lod, const TypedArray<Transform3D> &p_xforms = TypedArray<Transform3D>(), const PackedColorArray &p_colors = PackedColorArray()) const;
 	Vector2i _get_cell(const Vector3 &p_global_position, const int p_region_size);
 	void _compute_setup(const RID &multimesh);
+	void _compute_update_mm(const RID &mm);
 	void _compute_update();
 	void _setup_mmi_lod_ranges(const RID &p_mm, const Ref<Terrain3DMeshAsset> &p_ma, const int p_lod);
 
@@ -72,6 +82,9 @@ public:
 
 	void initialize(Terrain3D *p_terrain);
 	void destroy();
+
+	void set_is_updating_frustum(bool p_update) { updatingFrustum = p_update; }
+	bool get_is_updating_frustum() { return updatingFrustum; }
 
 	void clear_by_mesh(const int p_mesh_id);
 	void clear_by_location(const Vector2i &p_region_loc, const int p_mesh_id);
@@ -94,9 +107,6 @@ public:
 	void reset_density_counter() { _density_counter = 0; }
 	void dump_data();
 	void dump_mmis();
-
-	void set_compute_shader_file(const Ref<RDShaderFile> &p_file) { _compute_shader_file = p_file; }
-	Ref<RDShaderFile> get_compute_shader_file() const { return _compute_shader_file; }
 
 protected:
 	static void _bind_methods();

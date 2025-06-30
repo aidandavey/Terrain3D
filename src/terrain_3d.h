@@ -185,6 +185,8 @@ public:
 	void set_show_instances(const bool p_visible) { _mmi_parent ? _mmi_parent->set_visible(p_visible) : void(); }
 	bool get_show_instances() const { return _mmi_parent ? _mmi_parent->is_visible() : false; }
 
+	void set_is_updating_frustum(const bool &p_update_state) { _instancer ? _instancer->set_is_updating_frustum(p_update_state) : void(); }
+	bool get_is_updating_frustum() { return _instancer ? _instancer->get_is_updating_frustum() : false; }
 	// Utility
 	Vector3 get_intersection(const Vector3 &p_src_pos, const Vector3 &p_direction, const bool p_gpu_mode = false);
 	Ref<Mesh> bake_mesh(const int p_lod, const Terrain3DData::HeightFilter p_filter = Terrain3DData::HEIGHT_FILTER_NEAREST) const;
@@ -210,7 +212,6 @@ public:
 	real_t get_collision_priority() const { return _collision ? _collision->get_priority() : 1.f; }
 	void set_physics_material(const Ref<PhysicsMaterial> &p_mat) { _collision ? _collision->set_physics_material(p_mat) : void(); }
 	Ref<PhysicsMaterial> get_physics_material() const { return _collision ? _collision->get_physics_material() : Ref<PhysicsMaterial>(); }
-
 
 	// Overlay Aliases
 	void set_show_region_grid(const bool p_enabled) { _material.is_valid() ? _material->set_show_region_grid(p_enabled) : void(); }
