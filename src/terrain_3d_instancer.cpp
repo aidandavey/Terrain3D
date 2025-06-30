@@ -2,6 +2,8 @@
 
 #include <godot_cpp/classes/resource_saver.hpp>
 #include <godot_cpp/classes/world3d.hpp>
+#include <godot_cpp/classes/rd_uniform.hpp>
+#include <godot_cpp/classes/rd_shader_spirv.hpp>
 
 #include "constants.h"
 #include "logger.h"
@@ -124,8 +126,27 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 						mm = shadow_impostor_source_mm;
 					} else {
 						mm = _create_multimesh(mesh_id, lod, xforms, colors);
-						_mmi_command_buffers[mm] = RS->multimesh_get_command_buffer_rd_rid(mm);
-						_mmi_transform_buffers[mm] = RS->multimesh_get_buffer_rd_rid(mm);
+
+						Ref<Mesh> mesh = ma->get_mesh(lod);
+						if (mesh.is_null()) {
+							LOG(ERROR, "No LOD ", lod, " for mesh id ", p_mesh_id, " found");
+							continue;
+						}
+
+						mm = RS->multimesh_create();
+						RS->multimesh_allocate_data(mm, xforms.size(), RS->MULTIMESH_TRANSFORM_3D, true, false, true);
+						RS->multimesh_set_mesh(mm, mesh->get_rid());
+
+						if (xforms.size() > 0) {							
+							//mm->set_instance_count(xforms.size());
+							for (int i = 0; i < xforms.size(); i++) {
+								RS->multimesh_instance_set_transform(mm, i, xforms[i]);
+								if (i < colors.size()) {
+									RS->multimesh_instance_set_color(mm, i, xforms[i]);
+								}
+							}
+						}
+						_compute_setup(mm);
 					}
 					if (!mm.is_valid()) {
 						LOG(ERROR, "Failed to create MultiMesh for mesh_id: ", mesh_id, ", lod: ", lod);
@@ -321,8 +342,10 @@ RID Terrain3DInstancer::_create_multimesh(const int p_mesh_id, const int p_lod, 
 	}
 
 	mm = RS->multimesh_create();
-	RS->multimesh_allocate_data(mm, p_xforms.size(), RS->MULTIMESH_TRANSFORM_3D, true);
+	RS->multimesh_allocate_data(mm, p_xforms.size(), RS->MULTIMESH_TRANSFORM_3D, true, false, true);
 	RS->multimesh_set_mesh(mm, mesh->get_rid());
+
+	
 
 	if (p_xforms.size() > 0) {
 		//mm->set_instance_count(p_xforms.size());
@@ -333,6 +356,7 @@ RID Terrain3DInstancer::_create_multimesh(const int p_mesh_id, const int p_lod, 
 			}
 		}
 	}
+
 	return mm;
 }
 
@@ -344,12 +368,120 @@ Vector2i Terrain3DInstancer::_get_cell(const Vector3 &p_global_position, const i
 	return cell;
 }
 
-void Terrain3DInstancer::setup_compute() {
+void Terrain3DInstancer::_compute_setup(const RID &multimesh) {
+
+	_compute_active = true;
+	_surface_count = RS->mesh_get_surface_count(multimesh);
+	//emptyBuffer = new float[(BladeCount + 1) * 16];
+	//RenderingServer.MultimeshSetMesh(multimesh, TestMesh.GetRid());
+	//Vector3 aabb = Vector3(InstanceCount * 5.0f, 1000.0f, InstanceCount * 5.0f);
+	//RenderingServer.InstanceSetCustomAabb(instance, new Aabb(Vector3.Zero, aabb));
+	//Transform3D instanceTransform = Transform3D.Identity;
+	//RenderingServer.InstanceSetTransform(instance, instanceTransform);
+	//RenderingServer.InstanceSetScenario(instance, scenario);
+	//RenderingServer.InstanceSetBase(instance, multimesh);
+	//RenderingServer.InstanceGeometrySetFlag(instance, RenderingServer.InstanceFlags.UseDynamicGI, UseGI);
+	//RenderingServer.InstanceGeometrySetCastShadowsSetting(instance, UseShadows ? RenderingServer.ShadowCastingSetting.On : RenderingServer.ShadowCastingSetting.Off);
+
+	RID transform_buffer = RS->multimesh_get_buffer_rd_rid(multimesh);
+	RID command_buffer = RS->multimesh_get_command_buffer_rd_rid(multimesh);
+
+	_mmi_command_buffers[multimesh] = command_buffer;
+	_mmi_transform_buffers[multimesh] = transform_buffer;
+
 	_rd = RS->get_rendering_device();
+
+	Array mergeUniformArray;
+
+	Ref<RDUniform> _uniform;//	= new RDUniform();
+	_uniform.instantiate();
+	_uniform->set_uniform_type(RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+	_uniform->set_binding(0);
+	_uniform->add_id(command_buffer);
+	mergeUniformArray.append(_uniform);
+
+
+	Ref<RDUniform> _transformuniform; //	= new RDUniform();
+	_transformuniform.instantiate();
+	_transformuniform->set_uniform_type(RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+	_transformuniform->set_binding(1);
+	_transformuniform->add_id(transform_buffer);
+	mergeUniformArray.append(_transformuniform);
+
+	RID counterBuffer = _rd->storage_buffer_create(sizeof(uint32_t));
+
+	Ref<RDUniform> _counteruniform; //	= new RDUniform();
+	_counteruniform.instantiate();
+	_counteruniform->set_uniform_type(RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+	_counteruniform->set_binding(2);
+	_counteruniform->add_id(counterBuffer);
+	mergeUniformArray.append(_counteruniform);
+
+	_shader_rid = _rd->shader_create_from_spirv(_compute_shader_file->get_spirv());
+	_uniform_set_rid = _rd->uniform_set_create(mergeUniformArray, _shader_rid, 0);
+	_compute_pipeline = _rd->compute_pipeline_create(_shader_rid);
+	//ComputeCallable = Callable.From(() = > { ExecuteComputeTest(); });
+	_compute_active = false;
 }
 
-void Terrain3DInstancer::update_compute() {
+void Terrain3DInstancer::_compute_update() {
+	_compute_active = true;
+	
+	PackedFloat32Array newArray;
+	newArray.resize(32);
 
+	long ComputeList = _rd->compute_list_begin();
+	_rd->compute_list_bind_compute_pipeline(ComputeList, _compute_pipeline);
+	_rd->compute_list_bind_uniform_set(ComputeList, _uniform_set_rid, 0);
+
+	Camera3D *player_cam = _terrain->get_camera();
+	if (!player_cam) {
+		LOG(ERROR, "Couldn't get player camera");
+		return;
+	}
+
+	//float sineResult = Mathf.Clamp((Mathf.Sin(IterationValue) + 1.0f) / 2.0f, 0.0f, 1.0f);
+	if (updatingFrustum) {
+		lastFrustum = player_cam->get_frustum();
+	}
+
+	int index = 0;
+	int cleanuppassIndex = 0;
+	for (int i = 0; i < lastFrustum.size(); i++) {
+		Plane plane = lastFrustum[i];
+		newArray[index] = plane.get_normal().x;
+		index += 1;
+		newArray[index] = plane.get_normal().y;
+		index += 1;
+		newArray[index] = plane.get_normal().z;
+		index += 1;
+		newArray[index] = plane.d;
+		index += 1;
+	}
+	cleanuppassIndex = index;
+	newArray[index] = 0;
+	index += 1;
+	newArray[index] = _surface_count;
+	index += 1;
+	newArray[index] = 4000.0f;
+	index += 1;
+	newArray[index] = player_cam->get_global_position().x;
+	index += 1;
+	newArray[index] = player_cam->get_global_position().y;
+	index += 1;
+	newArray[index] = player_cam->get_global_position().z;
+
+	PackedByteArray testByteArray;// = new byte[newArray.Length * 4];
+	testByteArray.resize(newArray.size() * 4);
+	
+	testByteArray = newArray.to_byte_array();
+	
+	_rd->compute_list_set_push_constant(ComputeList, testByteArray, testByteArray.size());
+
+	_rd->compute_list_dispatch(ComputeList, 1, 1, 1);
+	_rd->compute_list_end();
+
+	_compute_active = false;
 
 }
 
@@ -1109,4 +1241,6 @@ void Terrain3DInstancer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("swap_ids", "src_id", "dest_id"), &Terrain3DInstancer::swap_ids);
 	ClassDB::bind_method(D_METHOD("dump_data"), &Terrain3DInstancer::dump_data);
 	ClassDB::bind_method(D_METHOD("dump_mmis"), &Terrain3DInstancer::dump_mmis);
+	ClassDB::bind_method(D_METHOD("get_compute_shader_file"), &Terrain3DInstancer::get_compute_shader_file);
+	ClassDB::bind_method(D_METHOD("set_compute_shader_file", "file"), &Terrain3DInstancer::set_compute_shader_file);
 }

@@ -5,6 +5,7 @@
 
 #include <godot_cpp/classes/multi_mesh.hpp>
 #include <godot_cpp/classes/multi_mesh_instance3d.hpp>
+#include <godot_cpp/classes/rd_shader_file.hpp>
 #include <unordered_map>
 
 #include "constants.h"
@@ -39,8 +40,14 @@ private:
 	Dictionary _mmi_command_buffers;
 	Dictionary _mmi_transform_buffers;
 	RenderingDevice *_rd;
-
-
+	bool _compute_active = false;
+	RID _shader_rid;
+	Ref<RDShaderFile> _compute_shader_file;
+	RID _uniform_set_rid;
+	RID _compute_pipeline;
+	bool updatingFrustum = true;
+	TypedArray<Plane> lastFrustum;
+	int32_t _surface_count = 0;
 	// Region MMI containers named Terrain3D/MMI/Region* are stored here as
 	//_mmi_containers{region_loc} -> Node3D
 	//std::unordered_map<Vector2i, RID, Vector2iHash> _mmi_containers;
@@ -55,8 +62,8 @@ private:
 	void _backup_region(const Ref<Terrain3DRegion> &p_region);
 	RID _create_multimesh(const int p_mesh_id, const int p_lod, const TypedArray<Transform3D> &p_xforms = TypedArray<Transform3D>(), const PackedColorArray &p_colors = PackedColorArray()) const;
 	Vector2i _get_cell(const Vector3 &p_global_position, const int p_region_size);
-	void setup_compute();
-	void update_compute();
+	void _compute_setup(const RID &multimesh);
+	void _compute_update();
 	void _setup_mmi_lod_ranges(const RID &p_mm, const Ref<Terrain3DMeshAsset> &p_ma, const int p_lod);
 
 public:
@@ -87,6 +94,9 @@ public:
 	void reset_density_counter() { _density_counter = 0; }
 	void dump_data();
 	void dump_mmis();
+
+	void set_compute_shader_file(const Ref<RDShaderFile> &p_file) { _compute_shader_file = p_file; }
+	Ref<RDShaderFile> get_compute_shader_file() const { return _compute_shader_file; }
 
 protected:
 	static void _bind_methods();
