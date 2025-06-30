@@ -133,6 +133,10 @@ void Terrain3D::__physics_process(const double p_delta) {
 			}
 		}
 	}
+
+	if (_instancer) {
+		_instancer->_compute_update();
+	}
 }
 
 /**
@@ -1113,10 +1117,6 @@ void Terrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_show_texture_normal"), &Terrain3D::get_show_texture_normal);
 	ClassDB::bind_method(D_METHOD("set_show_texture_rough", "enabled"), &Terrain3D::set_show_texture_rough);
 	ClassDB::bind_method(D_METHOD("get_show_texture_rough"), &Terrain3D::get_show_texture_rough);
-
-	ClassDB::bind_method(D_METHOD("get_compute_shader_file"), &Terrain3D::get_compute_shader_file);
-	ClassDB::bind_method(D_METHOD("set_compute_shader_file", "file"), &Terrain3D::set_compute_shader_file);
-
 
 	// Utility
 	ClassDB::bind_method(D_METHOD("get_intersection", "src_pos", "direction", "gpu_mode"), &Terrain3D::get_intersection, DEFVAL(false));

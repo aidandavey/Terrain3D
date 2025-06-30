@@ -212,12 +212,6 @@ public:
 	Ref<PhysicsMaterial> get_physics_material() const { return _collision ? _collision->get_physics_material() : Ref<PhysicsMaterial>(); }
 
 
-	// Compute MMI Aliases
-
-	void set_compute_shader_file(const Ref<RDShaderFile> &p_file) { _instancer ? _instancer->set_compute_shader_file(p_file) : void(); }
-	Ref<RDShaderFile> get_compute_shader_file() const { return _instancer ? _instancer->get_compute_shader_file() : Ref<RDShaderFile>(); }
-
-
 	// Overlay Aliases
 	void set_show_region_grid(const bool p_enabled) { _material.is_valid() ? _material->set_show_region_grid(p_enabled) : void(); }
 	bool get_show_region_grid() const { return _material.is_valid() ? _material->get_show_region_grid() : false; }

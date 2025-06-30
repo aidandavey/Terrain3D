@@ -417,6 +417,8 @@ void Terrain3DInstancer::_compute_setup(const RID &multimesh) {
 	_counteruniform->add_id(counterBuffer);
 	mergeUniformArray.append(_counteruniform);
 
+	_compute_shader_file = ResourceLoader::get_singleton()->load("shaders/atomicadd_compute_shader.glsl");
+
 	_shader_rid = _rd->shader_create_from_spirv(_compute_shader_file->get_spirv());
 	_uniform_set_rid = _rd->uniform_set_create(mergeUniformArray, _shader_rid, 0);
 	_compute_pipeline = _rd->compute_pipeline_create(_shader_rid);
