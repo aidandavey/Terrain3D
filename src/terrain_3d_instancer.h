@@ -45,6 +45,7 @@ private:
 	Dictionary _mm_input_transform_buffers;
 	Dictionary _mm_instance_count;
 	Dictionary _mm_dynamic_count_buffers;
+	Dictionary _mm_aabbs;
 
 	RenderingDevice *_rd;
 	bool _compute_active = false;
@@ -71,7 +72,7 @@ private:
 	void _backup_region(const Ref<Terrain3DRegion> &p_region);
 	RID _create_multimesh(const int p_mesh_id, const int p_lod, const TypedArray<Transform3D> &p_xforms = TypedArray<Transform3D>(), const PackedColorArray &p_colors = PackedColorArray()) const;
 	Vector2i _get_cell(const Vector3 &p_global_position, const int p_region_size);
-	void _compute_setup(const RID &multimesh);
+	void _compute_setup(const RID &multimesh, const Ref<Terrain3DMeshAsset> &ma);
 	void _compute_update_mm(const RID &mm);
 	void _compute_update();
 	void _setup_mmi_lod_ranges(const RID &p_mm, const Ref<Terrain3DMeshAsset> &p_ma, const int p_lod);

@@ -25,6 +25,9 @@ layout(push_constant, std430) uniform Params {
 	vec4 rightPlane; // Right plane: ax + by + cz + d = 0
 	vec4 bottomPlane; // Bottom plane: ax + by + cz + d = 0
 
+    float aabbSizeX;
+    float aabbSizeY;
+    float aabbSizeZ;
 	float instanceCount;
 }
 params;
@@ -102,7 +105,7 @@ void main() {
 	int startingIndex = basecoords * instanceInvocationCount;
 	int endingIndex = startingIndex + instanceInvocationCount;
 	mat4 thisInstance = mat4(0);
-	vec3 instanceSize = vec3(10.0); //subtract from origin to get the min corner, add to get the max corner.
+	vec3 instanceSize = vec3(params.aabbSizeX, params.aabbSizeY, params.aabbSizeZ);
 	vec3 instancePosition = vec3(0.0);
 
 	int curIndex = 0;

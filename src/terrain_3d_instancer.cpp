@@ -125,7 +125,7 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 						// Reuse LOD MM as shadow impostor
 						mm = shadow_impostor_source_mm;
 					} else {
-						mm = _create_multimesh(mesh_id, lod, xforms, colors);
+						//mm = _create_multimesh(mesh_id, lod, xforms, colors);
 
 						Ref<Mesh> mesh = ma->get_mesh(lod);
 						if (mesh.is_null()) {
@@ -134,7 +134,7 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 						}
 
 						mm = RS->multimesh_create();
-						RS->multimesh_allocate_data(mm, xforms.size(), RS->MULTIMESH_TRANSFORM_3D, true, false, true);
+						RS->multimesh_allocate_data(mm, xforms.size(), RS->MULTIMESH_TRANSFORM_3D, false, false, true);
 						RS->multimesh_set_mesh(mm, mesh->get_rid());
 
 						if (xforms.size() > 0) {
@@ -142,7 +142,7 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 							for (int i = 0; i < xforms.size(); i++) {
 								RS->multimesh_instance_set_transform(mm, i, xforms[i]);
 								if (i < colors.size()) {
-									RS->multimesh_instance_set_color(mm, i, xforms[i]);
+									//RS->multimesh_instance_set_color(mm, i, xforms[i]);
 								}
 							}
 						}
@@ -152,7 +152,7 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 						continue;
 					}
 
-					_compute_setup(mm);
+					_compute_setup(mm, ma);
 
 					// If LOD is shadow impostor, save it to use in shadow MMI
 					if (lod == ma->get_shadow_impostor()) {
@@ -346,7 +346,8 @@ RID Terrain3DInstancer::_create_multimesh(const int p_mesh_id, const int p_lod, 
 	mm = RS->multimesh_create();
 	RS->multimesh_allocate_data(mm, p_xforms.size(), RS->MULTIMESH_TRANSFORM_3D, true, false, true);
 	RS->multimesh_set_mesh(mm, mesh->get_rid());
-
+	RS->multimesh_set_custom_aabb(mm, mesh_asset->get_mesh()->get_aabb());
+	
 	if (p_xforms.size() > 0) {
 		//mm->set_instance_count(p_xforms.size());
 		for (int i = 0; i < p_xforms.size(); i++) {
@@ -368,12 +369,15 @@ Vector2i Terrain3DInstancer::_get_cell(const Vector3 &p_global_position, const i
 	return cell;
 }
 
-void Terrain3DInstancer::_compute_setup(const RID &multimesh) {
+void Terrain3DInstancer::_compute_setup(const RID &multimesh, const Ref<Terrain3DMeshAsset> &ma) {
 	if (!multimesh.is_valid()) {
 		LOG(ERROR, "Can't set up compute for invalid multimesh");
 		return;
 	}
-
+	
+	LOG(MESG, "Setting AABB for ", ma->get_name(), " to ", ma->get_mesh()->get_aabb());
+	_mm_aabbs[multimesh] = ma->get_mesh()->get_aabb();
+	
 	_compute_active = true;
 
 	RID transform_buffer = RS->multimesh_get_buffer_rd_rid(multimesh);
@@ -524,10 +528,25 @@ void Terrain3DInstancer::_compute_update_mm(const RID &mm) {
 		return;
 	}
 
+	if (! updatingFrustum) {
+		return;
+	}
+
+	if (lastFrustum.size() != 6) {
+		if (!_terrain) {
+			LOG(ERROR, "Terrain3D is null, cannot get camera for frustum");
+			return;
+		}
+		Camera3D *player_cam = _terrain->get_camera();
+		if (!player_cam) {
+			LOG(ERROR, "Couldn't get player camera for frustum");
+			return;
+		}
+		lastFrustum = player_cam->get_frustum();
+	}
 	_compute_active = true;
 
-	PackedFloat32Array newArray;
-	newArray.resize(28);
+
 
 	RID compute_pipeline = _mm_compute_pipelines[mm];
 
@@ -552,22 +571,29 @@ void Terrain3DInstancer::_compute_update_mm(const RID &mm) {
 		lastFrustum = player_cam->get_frustum();
 	}
 
-	int index = 0;
-	for (int i = 0; i < lastFrustum.size(); i++) {
-		Plane plane = lastFrustum[i];
-		newArray[index] = plane.get_normal().x;
-		index += 1;
-		newArray[index] = plane.get_normal().y;
-		index += 1;
-		newArray[index] = plane.get_normal().z;
-		index += 1;
-		newArray[index] = plane.d;
-		index += 1;
-	}
+	PackedFloat32Array newArray;
+	newArray.resize(112/4);
+	newArray.fill(0.0f);
 
-	newArray[index] = real_t(_mm_instance_count[mm]);
+	int index = 0;
+	for (int i = 0; i < 6; i++) {
+		Plane plane = lastFrustum[i];
+		newArray[index++] = plane.get_normal().x;
+		newArray[index++] = plane.get_normal().y;
+		newArray[index++] = plane.get_normal().z;
+		newArray[index++] = plane.d;
+	}
+	AABB instance_aabb = _mm_aabbs[mm];
+	newArray[index++] = instance_aabb.size.x;
+	newArray[index++] = instance_aabb.size.y;
+	newArray[index++] = instance_aabb.size.z;
+	newArray[index++] = real_t(_mm_instance_count[mm]);
 
 	PackedByteArray testByteArray = newArray.to_byte_array();
+
+	if (testByteArray.size() != 112) {
+		LOG(WARN, "Mismatch in testByteArray, should be 112 bytes, instead is ", testByteArray.size());
+	}
 
 	_rd->compute_list_set_push_constant(compute_list, testByteArray, testByteArray.size());
 	_rd->compute_list_dispatch(compute_list, 64, 1, 1);
