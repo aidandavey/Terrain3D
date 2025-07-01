@@ -11,7 +11,7 @@ layout(std430, binding = 0) restrict buffer CommandBuffer { int data[]; }
 command_buffer;
 layout(std430, binding = 1) restrict buffer ReferenceBuffer { float data[]; }
 reference_buffer;
-layout(std430, binding = 2) restrict buffer OutputBufferBuffer { float data[]; }
+layout(std430, binding = 2) restrict buffer OutputBuffer { float data[]; }
 output_buffer;
 
 layout(std430, binding = 3) restrict buffer OutputCounter { int index; }
