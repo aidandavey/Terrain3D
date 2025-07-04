@@ -103,6 +103,7 @@ void Terrain3DInstancer::_update_mmis(const Vector2i &p_region_loc, const int p_
 					if (cell_mmi_dict.count(cell) == 0) {
 						mmi = RS->instance_create();
 						RS->instance_set_scenario(mmi, _terrain->get_world_3d()->get_scenario());
+						RS->instance_set_custom_aabb(mmi, ma->get_mesh()->get_aabb());
 
 						LOG(DEBUG, "No MMI found, Created new MultiMeshInstance: ", RID(mmi));
 
@@ -179,8 +180,7 @@ void Terrain3DInstancer::_setup_mmi_lod_ranges(const RID &p_mmi, const Ref<Terra
 		// MMI ranges have gaps. Some users experienced worse gaps with billboards (assumed to be last lod)
 		real_t lod_begin = p_ma->get_lod_range_begin(p_lod);
 		real_t lod_end = p_ma->get_lod_range_end(p_lod);
-		float lod_overlap = (p_lod < p_ma->get_last_lod() - 1) ? 1.0005f : 1.0024f;		
-		RS->instance_geometry_set_visibility_range(p_mmi, lod_begin, lod_end * lod_overlap, 0.0, 0.0, RenderingServer::VISIBILITY_RANGE_FADE_DISABLED);
+		RS->instance_geometry_set_visibility_range(p_mmi, lod_begin, lod_end, 0.0, 0.0, RenderingServer::VISIBILITY_RANGE_FADE_DISABLED);
 	}
 }
 
