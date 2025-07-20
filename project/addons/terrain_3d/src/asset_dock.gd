@@ -321,7 +321,9 @@ func remove_all_highlights():
 		return
 		
 	for i: int in mesh_list.entries.size():
-		plugin.terrain.instancer.set_highlighted(i, false)
+		var resource: Terrain3DMeshAsset = mesh_list.entries[i].resource 
+		if resource:
+			resource.set_highlighted(false)
 	
 
 ## Window Management
@@ -506,7 +508,6 @@ class ListContainer extends Container:
 		entry.hovered.connect(_on_resource_hovered.bind(id))
 		entry.selected.connect(set_selected_id.bind(id))
 		entry.inspected.connect(_on_resource_inspected)
-		entry.highlighted.connect(_on_entry_highlighted)
 		entry.changed.connect(_on_resource_changed.bind(id))
 		entry.type = type
 		entry.asset_list = p_assets
@@ -560,10 +561,6 @@ class ListContainer extends Container:
 		await get_tree().create_timer(.01).timeout
 		EditorInterface.edit_resource(p_resource)
 	
-	
-	func _on_entry_highlighted(id: int, state: bool):
-		if plugin:
-			plugin.terrain.instancer.set_highlighted(id, state)
 	
 	func _on_resource_changed(p_resource: Resource, p_id: int) -> void:
 		if not p_resource:
@@ -651,7 +648,6 @@ class ListEntry extends VBoxContainer:
 	signal selected()
 	signal changed(resource: Resource)
 	signal inspected(resource: Resource)
-	signal highlighted(id: int, state: bool)
 	
 	var resource: Resource
 	var type := Terrain3DAssets.TYPE_TEXTURE
@@ -684,6 +680,8 @@ class ListEntry extends VBoxContainer:
 
 
 	func _ready() -> void:
+		if resource is Terrain3DMeshAsset:
+			is_highlighted = resource.get_highlighted()
 		setup_buttons()
 		setup_label()
 		focus_style.set_border_width_all(2)
@@ -724,6 +722,7 @@ class ListEntry extends VBoxContainer:
 			button_highlight.tooltip_text = "Highlight Instances"
 			button_highlight.toggle_mode = true
 			button_highlight.mouse_filter = Control.MOUSE_FILTER_PASS
+			button_highlight.set_pressed_no_signal(is_highlighted)
 			button_highlight.pressed.connect(highlight)
 			button_row.add_child(button_highlight)
 		
@@ -921,4 +920,4 @@ class ListEntry extends VBoxContainer:
 	func highlight() -> void:
 		if resource is Terrain3DMeshAsset:
 			is_highlighted = !is_highlighted
-			highlighted.emit(resource.id, is_highlighted)
+			resource.set_highlighted(is_highlighted)
