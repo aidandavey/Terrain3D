@@ -376,10 +376,10 @@ Dictionary Terrain3DCollision::_get_unused_instance_shapes(const Dictionary &p_i
 			const int mesh_id = spare_instance_keys[i];
 			LOG(EXTREME, "Decomposing  spare mesh id ", mesh_id);
 
-			TypedArray<Transform3D> mesh_instance_transforms;
-			Array instance_data = p_instance_build_data[mesh_id];
+			Array mesh_instance_transforms;
+			TypedArray<Transform3D> instance_data = p_instance_build_data[mesh_id];
 			if (instance_data.size() > 0) {
-				mesh_instance_transforms = instance_data[0];
+				mesh_instance_transforms = Array(instance_data[0]);
 			}
 
 			LOG(DEBUG, "Decomposing all but ", mesh_instance_transforms.size(), " assets of type ", mesh_id);
@@ -520,7 +520,7 @@ void Terrain3DCollision::_generate_instances(const Dictionary &p_instance_build_
 			// Reuse mesh asset instance if possible
 			TypedArray<Array> reusable_assets;
 			if (p_recyclable_instances.has(mesh_id)) {
-				reusable_assets = p_recyclable_instances[mesh_id];
+				reusable_assets = Array(p_recyclable_instances[mesh_id]);
 			}
 
 			if (reusable_assets.size() > 0) {
@@ -656,7 +656,7 @@ void Terrain3DCollision::_update_instance_collision() {
 	const int region_size = _terrain->get_region_size();
 	const real_t vertex_spacing = _terrain->get_vertex_spacing();
 	const int cell_size = _terrain->get_instancer()->CELL_SIZE;
-	const Vector2i snapped_pos = _snap_to_grid(_terrain->get_snapped_position() / vertex_spacing);
+	const Vector2i snapped_pos = _snap_to_grid(v3v2i(_terrain->get_collision_target_position()) / vertex_spacing);
 
 	if (!_terrain->get_data()->get_regionp(v2v3(snapped_pos)).is_valid()) {
 		return;
