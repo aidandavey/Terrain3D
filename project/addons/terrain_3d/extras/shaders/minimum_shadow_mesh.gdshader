@@ -2,7 +2,7 @@
 // This shader is the minimum needed to allow the terrain to function, without any texturing.
 
 shader_type spatial;
-render_mode depth_draw_opaque,cull_front,skip_vertex_transform;
+render_mode blend_mix,depth_draw_opaque,cull_front,diffuse_burley,specular_schlick_ggx,skip_vertex_transform;
 
 // Defined Constants
 #define SKIP_PASS 0
@@ -17,7 +17,7 @@ render_mode depth_draw_opaque,cull_front,skip_vertex_transform;
 
 // Private uniforms
 // Commented uniforms aren't needed for this shader, but are available for your own needs.
-uniform vec3 _camera_pos = vec3(0.f);
+uniform vec3 _target_pos = vec3(0.f);
 uniform float _mesh_size = 48.f;
 uniform uint _background_mode = 1u; // NONE = 0, FLAT = 1, NOISE = 2
 uniform uint _mouse_layer = 0x80000000u; // Layer 32
@@ -27,7 +27,6 @@ uniform float _region_size = 1024.0;
 uniform float _region_texel_size = 0.0009765625; // = 1/1024
 uniform int _region_map_size = 32;
 uniform int _region_map[1024];
-uniform float _offset_multiplier = 1.0;
 //uniform vec2 _region_locations[1024];
 //uniform float _texture_uv_scale_array[32];
 //uniform float _texture_detile_array[32];
@@ -74,8 +73,8 @@ void vertex() {
 	// Get vertex of flat plane in world coordinates and set world UV
 	v_vertex = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 
-	// Camera distance to vertex on flat plane
-	v_vertex_xz_dist = length(v_vertex.xz - _camera_pos.xz);
+	// Target Object distance to vertex on flat plane
+	v_vertex_xz_dist = length(v_vertex.xz - _target_pos.xz);
 
 	// Geomorph vertex, set end and start for linear height interpolate
 	float scale = MODEL_MATRIX[0][0];
@@ -119,7 +118,6 @@ void vertex() {
 
 	// Convert model space to view space w/ skip_vertex_transform render mode
 	VERTEX = (VIEW_MATRIX * vec4(v_vertex, 1.0)).xyz;
-	VERTEX.y += sin(TIME) * _offset_multiplier;
 	NORMAL = normalize((MODELVIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	BINORMAL = normalize((MODELVIEW_MATRIX * vec4(BINORMAL, 0.0)).xyz);
 	TANGENT = normalize((MODELVIEW_MATRIX * vec4(TANGENT, 0.0)).xyz);

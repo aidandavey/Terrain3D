@@ -400,14 +400,13 @@ void Terrain3DMesher::snap() {
 	}
 	_last_target_position = target_pos_2d;
 
-	real_t vertex_spacing = _terrain->get_vertex_spacing();
 	Vector3 snapped_pos = (target_pos / vertex_spacing).floor() * vertex_spacing;
-	RS->material_set_param(_terrain->get_material()->get_material_rid(), "_camera_pos", snapped_pos);
+	//RS->material_set_param(_terrain->get_material()->get_material_rid(), "_camera_pos", snapped_pos);
 	if (_terrain->get_shadow_material().is_valid()) {
-		RS->material_set_param(_terrain->get_shadow_material()->get_rid(), "_camera_pos", snapped_pos);
+		RS->material_set_param(_terrain->get_shadow_material()->get_rid(), "_camera_pos", target_pos);
 	}
 	if (_terrain->get_ocean_material().is_valid()) {
-		RS->material_set_param(_terrain->get_ocean_material()->get_rid(), "_camera_pos", snapped_pos);
+		RS->material_set_param(_terrain->get_ocean_material()->get_rid(), "_camera_pos", target_pos);
 	}
 
 	Vector3 pos = Vector3(0.f, 0.f, 0.f);
