@@ -127,7 +127,7 @@ void Terrain3D::__physics_process(const double p_delta) {
 	if (_collision && _collision->is_dynamic_mode()) {
 		_collision->update();
 	}
-	if (_collision && _collision->is_instance_collision_enabled()) {
+	if (_collision && _collision->is_instance_collision_dynamic_mode()) {
 		_collision->update_instance_collision();
 	}
 }
@@ -1346,7 +1346,7 @@ void Terrain3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "collision_priority", PROPERTY_HINT_RANGE, "0.1,256,.1"), "set_collision_priority", "get_collision_priority");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "physics_material", PROPERTY_HINT_RESOURCE_TYPE, "PhysicsMaterial"), "set_physics_material", "get_physics_material");
 	ADD_SUBGROUP("Instance Collision", "");
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "instance_collision_mode", PROPERTY_HINT_ENUM, "Disabled, Dynamic / Game, Dynamic / Editor"), "set_instance_collision_mode", "get_instance_collision_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "instance_collision_mode", PROPERTY_HINT_ENUM, "Disabled,Dynamic / Game,Dynamic / Editor,Manual"), "set_instance_collision_mode", "get_instance_collision_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "instance_collision_radius", PROPERTY_HINT_RANGE, "1.,256.,1."), "set_instance_collision_radius", "get_instance_collision_radius");
 
 	ADD_GROUP("Terrain Mesh", "");

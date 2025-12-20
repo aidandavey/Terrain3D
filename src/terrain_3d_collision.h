@@ -29,6 +29,7 @@ public: // Constants
 		INSTANCE_COLLISION_DISABLED,
 		INSTANCE_COLLISION_DYNAMIC_GAME,
 		INSTANCE_COLLISION_DYNAMIC_EDITOR,
+		INSTANCE_COLLISION_MANUAL,
 	};
 
 private:
@@ -62,6 +63,9 @@ private:
 
 	// Stored as {rid:RID} -> [body_rid:RID, shape_index:int]
 	Dictionary _RID_index_map = {};
+
+	// shape_rid: PackedInt32Array [mesh_id, cell_x, cell_y, instance_index]
+	Dictionary _shape_asset_map = {};
 
 	// Debug visualisation queue
 
@@ -100,6 +104,7 @@ private:
 	Dictionary _get_recyclable_instances(const Vector2i &p_snapped_pos, const real_t p_radius, const int p_cell_size, const real_t p_vertex_spacing);
 	Dictionary _get_instance_build_data(const TypedArray<Vector2i> &p_instance_cells_to_build, const int p_region_size, const int p_cell_size, const real_t p_vertex_spacing);
 	Dictionary _get_unused_instance_shapes(const Dictionary &p_mesh_instance_build_data, Dictionary &p_recyclable_mesh_instance_shapes);
+	void _set_instance_shape_data(const RID &p_shape_rid, const int p_mesh_id, const Vector2i &p_cell_location, const int p_instance_index);
 
 	void _destroy_remaining_instance_shapes(Dictionary &p_unused_instance_shapes);
 	void _generate_instances(const Dictionary &p_instance_build_data, Dictionary &p_recyclable_instances, Dictionary &p_unused_instance_shapes);
@@ -134,9 +139,15 @@ public:
 	bool is_instance_collision_enabled() const { return _instance_collision_mode > InstanceCollisionMode::INSTANCE_COLLISION_DISABLED; }
 	bool is_instance_collision_editor_mode() const { return _instance_collision_mode == InstanceCollisionMode::INSTANCE_COLLISION_DYNAMIC_EDITOR; }
 	bool is_instance_collision_dynamic_mode() const { return _instance_collision_mode == InstanceCollisionMode::INSTANCE_COLLISION_DYNAMIC_GAME || _instance_collision_mode == InstanceCollisionMode::INSTANCE_COLLISION_DYNAMIC_EDITOR; }
+	bool is_instance_collision_manual_mode() const { return _instance_collision_mode == InstanceCollisionMode::INSTANCE_COLLISION_MANUAL; }
 	void set_instance_collision_radius(const real_t p_radius);
 	real_t get_instance_collision_radius() const { return _instance_collision_radius; }
 	void set_instance_collision_dirty(const bool p_dirty = true) { _instance_collision_is_dirty = p_dirty; }
+
+	void build_instance_collision_at_cell(const Vector2i &p_region_loc, const Vector2i &p_cell, const int p_mesh_id);
+	void destroy_instance_collision_at_cell(const Vector2i &p_region_loc, const Vector2i &p_cell, const int p_mesh_id);
+	void set_instance_collision_cells(TypedArray<Vector2i> p_cells);
+	Dictionary get_instance_information(const RID p_shape_rid) const;
 
 	void set_shape_size(const uint16_t p_size);
 	uint16_t get_shape_size() const { return _shape_size; }
