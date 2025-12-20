@@ -434,6 +434,7 @@ void Terrain3DCollision::_destroy_remaining_instance_shapes(Dictionary &p_unused
 			}
 			_queue_debug_mesh_update(shape_rid, Transform3D(), Ref<ArrayMesh>(), DebugMeshInstanceData::Action::DESTROY);
 			PS->free_rid(shape_rid);
+			_shape_asset_map.erase(shape_rid);
 			is_dirty = true;
 			LOG(EXTREME, "Destroyed ", shape_rid);
 		}
@@ -578,6 +579,9 @@ void Terrain3DCollision::_generate_instances(const Dictionary &p_instance_build_
 							// Same body: just update transform
 							PS->body_set_shape_transform(target_body, shape_id, this_transform);
 						}
+
+						_set_instance_shape_data(shape_rid, mesh_id, cell_pos, x);
+
 						if (is_instance_collision_editor_mode() || (IS_EDITOR && is_instance_collision_manual_mode())) {
 							const Ref<Shape3D> &ma_shape = cast_to<Shape3D>(ma->get_shapes()[s]);
 							_queue_debug_mesh_update(shape_rid, this_transform, ma_shape->get_debug_mesh(), DebugMeshInstanceData::Action::UPDATE);
@@ -660,6 +664,7 @@ void Terrain3DCollision::_generate_instances(const Dictionary &p_instance_build_
 							PS->shape_set_data(shape_rid, PS->shape_get_data(ma_shape->get_rid()));
 							// If shape was newly added to body, we need to set map entry later when rebuilding
 							shapes.push_back(shape_rid);
+							_set_instance_shape_data(shape_rid, mesh_id, cell_pos, x);
 							if (is_instance_collision_editor_mode() || (IS_EDITOR && is_instance_collision_manual_mode())) {
 								_queue_debug_mesh_update(shape_rid, this_transform, ma_shape->get_debug_mesh(), DebugMeshInstanceData::Action::UPDATE);
 							}
@@ -700,6 +705,7 @@ void Terrain3DCollision::_generate_instances(const Dictionary &p_instance_build_
 							PS->shape_set_data(shape_rid, PS->shape_get_data(ma_shape->get_rid()));
 							PS->body_add_shape(target_body, shape_rid, this_transform);
 							shapes.push_back(shape_rid);
+							_set_instance_shape_data(shape_rid, mesh_id, cell_pos, x);
 							if (is_instance_collision_editor_mode() || (IS_EDITOR && is_instance_collision_manual_mode())) {
 								_queue_debug_mesh_update(shape_rid, this_transform, ma_shape->get_debug_mesh(), DebugMeshInstanceData::Action::CREATE);
 							}
@@ -725,6 +731,16 @@ void Terrain3DCollision::_generate_instances(const Dictionary &p_instance_build_
 			_RID_index_map[PS->body_get_shape(bid, i)] = Array::make(bid, i);
 		}
 	}
+}
+
+void Terrain3DCollision::_set_instance_shape_data(const RID &p_shape_rid, const int p_mesh_id, const Vector2i &p_cell_location, const int p_instance_index) {
+	PackedInt32Array shape_info;
+	shape_info.resize(4);
+	shape_info.set(0, p_mesh_id);
+	shape_info.set(1, p_cell_location[0]);
+	shape_info.set(2, p_cell_location[1]);
+	shape_info.set(3, p_instance_index);
+	_shape_asset_map[p_shape_rid] = shape_info;
 }
 
 void Terrain3DCollision::update_instance_collision() {
@@ -786,6 +802,7 @@ void Terrain3DCollision::destroy_instance_collision() {
 	_destroy_debug_mesh_instances();
 
 	_active_instance_cells.clear();
+	_shape_asset_map.clear();
 	_last_snapped_pos_instance_collision = V2I_MAX;
 	LOG(EXTREME, "Destroy instance collision update time: ", Time::get_singleton()->get_ticks_usec() - time, " us");
 }
@@ -1407,6 +1424,33 @@ void Terrain3DCollision::set_instance_collision_cells(TypedArray<Vector2i> p_cel
 	_destroy_remaining_instance_shapes(unused_instance_shapes);
 }
 
+Dictionary Terrain3DCollision::get_instance_information(const RID p_shape_rid) const {
+	Dictionary r;
+	if (!_shape_asset_map.has(p_shape_rid)) {
+		return r;
+	}
+
+	const PackedInt32Array data = _shape_asset_map[p_shape_rid];
+	if (data.size() < 4) {
+		LOG(ERROR, "Shape instance information corrupted for shape rid: ", p_shape_rid);
+		return r;
+	}
+
+	r["mesh_id"] = data[0];
+
+	const Vector2i cell = Vector2i(data[1], data[2]);
+	const int cells_per_region = _terrain->get_region_size() / Terrain3DInstancer::CELL_SIZE;
+	const Vector2i region_loc = Vector2i((Vector2(cell) / real_t(cells_per_region)).floor());
+	const Vector2i cell_loc = cell - (region_loc * cells_per_region);
+
+	r["cell"] = cell_loc;
+	r["region"] = region_loc;
+
+	r["index"] = data[3];
+
+	return r;
+}
+
 void Terrain3DCollision::set_shape_size(const uint16_t p_size) {
 	uint16_t size = CLAMP(p_size, 8, 64);
 	size = int_round_mult(size, uint16_t(8));
@@ -1545,6 +1589,7 @@ void Terrain3DCollision::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("build_instance_collision_at_cell", "region_location", "cell_location", "mesh_id"), &Terrain3DCollision::build_instance_collision_at_cell);
 	ClassDB::bind_method(D_METHOD("destroy_instance_collision_at_cell", "region_location", "cell_location", "mesh_id"), &Terrain3DCollision::destroy_instance_collision_at_cell);
 	ClassDB::bind_method(D_METHOD("set_instance_collision_cells", "cells"), &Terrain3DCollision::set_instance_collision_cells);
+	ClassDB::bind_method(D_METHOD("get_instance_information", "shape_rid"), &Terrain3DCollision::get_instance_information);
 
 	ClassDB::bind_method(D_METHOD("set_shape_size", "size"), &Terrain3DCollision::set_shape_size);
 	ClassDB::bind_method(D_METHOD("get_shape_size"), &Terrain3DCollision::get_shape_size);
