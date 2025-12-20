@@ -578,7 +578,7 @@ void Terrain3DCollision::_generate_instances(const Dictionary &p_instance_build_
 							// Same body: just update transform
 							PS->body_set_shape_transform(target_body, shape_id, this_transform);
 						}
-						if (is_instance_collision_editor_mode()) {
+						if (is_instance_collision_editor_mode() || (IS_EDITOR && is_instance_collision_manual_mode())) {
 							const Ref<Shape3D> &ma_shape = cast_to<Shape3D>(ma->get_shapes()[s]);
 							_queue_debug_mesh_update(shape_rid, this_transform, ma_shape->get_debug_mesh(), DebugMeshInstanceData::Action::UPDATE);
 						}
@@ -596,7 +596,7 @@ void Terrain3DCollision::_generate_instances(const Dictionary &p_instance_build_
 						// Check for a shape in the unused shapes pool
 						TypedArray<RID> unused_shapes;
 						if (p_unused_instance_shapes.has(shape_type)) {
-							unused_shapes = p_unused_instance_shapes[shape_type];
+							unused_shapes = TypedArray<RID>(p_unused_instance_shapes[shape_type]);
 						}
 						// If no unused shapes available, attempt to decompose one recyclable full-instance
 						if (unused_shapes.is_empty()) {
@@ -622,7 +622,7 @@ void Terrain3DCollision::_generate_instances(const Dictionary &p_instance_build_
 									}
 									// refresh local unused_shapes for this type
 									if (p_unused_instance_shapes.has(shape_type)) {
-										unused_shapes = p_unused_instance_shapes[shape_type];
+										unused_shapes = TypedArray<RID>(p_unused_instance_shapes[shape_type]);
 									}
 								}
 							}
@@ -660,7 +660,7 @@ void Terrain3DCollision::_generate_instances(const Dictionary &p_instance_build_
 							PS->shape_set_data(shape_rid, PS->shape_get_data(ma_shape->get_rid()));
 							// If shape was newly added to body, we need to set map entry later when rebuilding
 							shapes.push_back(shape_rid);
-							if (is_instance_collision_editor_mode()) {
+							if (is_instance_collision_editor_mode() || (IS_EDITOR && is_instance_collision_manual_mode())) {
 								_queue_debug_mesh_update(shape_rid, this_transform, ma_shape->get_debug_mesh(), DebugMeshInstanceData::Action::UPDATE);
 							}
 						}
@@ -700,7 +700,7 @@ void Terrain3DCollision::_generate_instances(const Dictionary &p_instance_build_
 							PS->shape_set_data(shape_rid, PS->shape_get_data(ma_shape->get_rid()));
 							PS->body_add_shape(target_body, shape_rid, this_transform);
 							shapes.push_back(shape_rid);
-							if (is_instance_collision_editor_mode()) {
+							if (is_instance_collision_editor_mode() || (IS_EDITOR && is_instance_collision_manual_mode())) {
 								_queue_debug_mesh_update(shape_rid, this_transform, ma_shape->get_debug_mesh(), DebugMeshInstanceData::Action::CREATE);
 							}
 						}
@@ -791,7 +791,7 @@ void Terrain3DCollision::destroy_instance_collision() {
 }
 
 void Terrain3DCollision::_create_debug_mesh_instance(const RID &p_shape_rid, const Transform3D &p_xform, const Ref<ArrayMesh> &p_debug_mesh) {
-	if (!is_instance_collision_editor_mode()) {
+	if (!(is_instance_collision_editor_mode() || (IS_EDITOR && is_instance_collision_manual_mode()))) {
 		return;
 	}
 	const int time = Time::get_singleton()->get_ticks_usec();
@@ -817,7 +817,7 @@ void Terrain3DCollision::_create_debug_mesh_instance(const RID &p_shape_rid, con
 }
 
 void Terrain3DCollision::_update_debug_mesh_instance(const RID &p_shape_rid, const Transform3D &p_xform, const Ref<ArrayMesh> &p_debug_mesh) {
-	if (!is_instance_collision_editor_mode()) {
+	if (!(is_instance_collision_editor_mode() || (IS_EDITOR && is_instance_collision_manual_mode()))) {
 		return;
 	}
 	const int time = Time::get_singleton()->get_ticks_usec();
@@ -1193,6 +1193,220 @@ void Terrain3DCollision::set_instance_collision_radius(const real_t p_radius) {
 	}
 }
 
+void Terrain3DCollision::build_instance_collision_at_cell(const Vector2i &p_region_loc, const Vector2i &p_cell, const int p_mesh_id) {
+	if (!is_instance_collision_manual_mode()) {
+		LOG(ERROR, "The method build_instance_collision_at_cell() is only available when instance_collision_mode == INSTANCE_COLLISION_MANUAL.");
+		return;
+	}
+
+	// Verify mesh id is valid and has some colliders
+	const int mesh_count = _terrain->get_assets()->get_mesh_count();
+	if (p_mesh_id < 0 || p_mesh_id >= mesh_count) {
+		LOG(ERROR, "MeshAsset id ", p_mesh_id, " is invalid, must be in the range [0, ", mesh_count - 1, "]");
+		return;
+	}
+
+	// Ensure the cell location is valid given the region size
+	const int region_size = _terrain->get_region_size();
+	const int cell_size = _terrain->get_instancer()->CELL_SIZE;
+	const int cells_per_region = region_size / cell_size;
+
+	if (p_cell[0] < 0 || p_cell[0] >= cells_per_region || p_cell[1] < 0 || p_cell[1] >= cells_per_region) {
+		LOG(ERROR, "Cell location ", p_cell, " is invalid, components must be in the range [0, ", cells_per_region - 1, "]");
+		return;
+	}
+
+	const Ref<Terrain3DMeshAsset> ma = _terrain->get_assets()->get_mesh_asset(p_mesh_id);
+
+	if (!ma.is_valid()) {
+		LOG(ERROR, "MeshAsset ", p_mesh_id, " is null, cannot build instances");
+		return;
+	}
+
+	if (!ma->is_enabled()) {
+		LOG(ERROR, "MeshAsset ", p_mesh_id, " is not enabled, cannot build instances");
+		return;
+	}
+
+	if (ma->get_shape_count() == 0) {
+		LOG(ERROR, "MeshAsset ", p_mesh_id, " is valid and enabled, but has no collision shapes, cannot build instances");
+		return;
+	}
+
+	// Check region and cell
+	const Terrain3DRegion *region = _terrain->get_data()->get_region_ptr(p_region_loc);
+
+	if (!region) {
+		LOG(ERROR, "Could not get region ", p_region_loc, ", cannot build instances");
+		return;
+	}
+
+	const Dictionary mesh_inst_dict = region->get_instances();
+
+	if (!mesh_inst_dict.has(p_mesh_id)) {
+		LOG(ERROR, "Region ", p_region_loc, " contains no MeshAsset id ", p_mesh_id, ", cannot build instances");
+		return;
+	}
+
+	const Dictionary cell_inst_dict = mesh_inst_dict[p_mesh_id];
+	if (!cell_inst_dict.has(p_cell)) {
+		// no instances in this cell, should be okay to silently return
+		return;
+	}
+
+	const real_t vertex_spacing = _terrain->get_vertex_spacing();
+
+	// Gather build data from cell instances
+	Dictionary mesh_instance_build_data;
+	{
+		const Array triple = cell_inst_dict[p_cell];
+		if (triple.is_empty()) {
+			LOG(WARN, "Missing instance triple data for region ", p_region_loc, " at cell ", p_cell);
+			return;
+		}
+
+		TypedArray<Transform3D> xforms = triple[0];
+		if (xforms.is_empty()) {
+			// no instances to add, should be okay to silently return
+			return;
+		}
+
+		LOG(DEBUG, xforms.size(), " instances of ", p_mesh_id, " to build for region ", p_region_loc, " at cell ", p_cell);
+
+		// Compute region global offset once (Vector3) to avoid integer/implicit op errors.
+		const Vector3 region_global_offset = v2iv3(p_region_loc) * real_t(region_size) * vertex_spacing;
+
+		// Make an explicit local copy of region_space transforms before mutating to global.
+		TypedArray<Transform3D> transformed_xforms;
+		transformed_xforms.resize(xforms.size());
+		for (int xi = 0; xi < xforms.size(); xi++) {
+			Transform3D t = Transform3D(xforms[xi]); // region-local
+			t.origin += region_global_offset;        // global transform
+			transformed_xforms[xi] = t;
+		}
+
+		Dictionary cells;
+		cells[p_cell] = transformed_xforms;
+		mesh_instance_build_data[p_mesh_id] = cells;
+	}
+
+	// Empty dictionaries for the generate function
+	Dictionary recyclable;
+	Dictionary unused;
+
+	// Generate
+	_generate_instances(mesh_instance_build_data, recyclable, unused);
+}
+
+void Terrain3DCollision::destroy_instance_collision_at_cell(const Vector2i &p_region_loc, const Vector2i &p_cell, const int p_mesh_id) {
+	if (!is_instance_collision_manual_mode()) {
+		LOG(ERROR, "The method destroy_instance_collision_at_cell() is only available when instance_collision_mode == INSTANCE_COLLISION_MANUAL.");
+		return;
+	}
+
+	const int region_size = _terrain->get_region_size();
+	const int cell_size = _terrain->get_instancer()->CELL_SIZE;
+	const int cells_per_region = region_size / cell_size;
+
+	// Since we are mapping the cell location, prevent going outside of the requested region
+	if (p_cell[0] < 0 || p_cell[0] >= cells_per_region || p_cell[1] < 0 || p_cell[1] >= cells_per_region) {
+		LOG(ERROR, "Cell location ", p_cell, " is invalid, components must be in the range [0, ", cells_per_region - 1, "]");
+		return;
+	}
+
+	// Convert to terrain cell location
+	const Vector2i cell_loc = p_cell + (Vector2i(1, 1) * (region_size * cells_per_region));
+
+	if (!_active_instance_cells.has(cell_loc)) {
+		// Nothing to remove, should be fine to silently return
+		return;
+	}
+
+	Dictionary cell_instances = _active_instance_cells[cell_loc];
+	if (!cell_instances.has(p_mesh_id)) {
+		// Nothing to remove, should be fine to silently return
+		return;
+	}
+
+	// Remove instances from active cell
+	Array instances_to_destroy = cell_instances[p_mesh_id];
+
+	// Clean up cache
+	cell_instances.erase(p_mesh_id);
+	if (cell_instances.is_empty()) {
+		_active_instance_cells.erase(cell_loc);
+	}
+
+	// Collect shapes to remove
+	Dictionary shapes_to_destroy;
+
+	for (int i = 0, size = instances_to_destroy.size(); i < size; ++i) {
+		const TypedArray<RID> instance = instances_to_destroy[i];
+		for (int k = 0, shape_count = instance.size(); k < shape_count; ++k) {
+			const RID rid = instance[k];
+			if (!rid.is_valid()) {
+				LOG(WARN, "Tried to decompose shape for MeshAsset ", p_mesh_id, " with invalid RID for region ", p_region_loc, " at cell ", p_cell);
+				continue;
+			}
+			const int shape_type = PS->shape_get_type(rid);
+			TypedArray<RID> shapes = shapes_to_destroy[shape_type];
+			shapes.push_back(rid);
+			shapes_to_destroy[shape_type] = shapes;
+		}
+	}
+
+	// Destroy
+	_destroy_remaining_instance_shapes(shapes_to_destroy);
+}
+
+void Terrain3DCollision::set_instance_collision_cells(TypedArray<Vector2i> p_cells) {
+	if (!is_instance_collision_manual_mode()) {
+		LOG(ERROR, "The method set_instance_collision_cells() is only available when instance_collision_mode == INSTANCE_COLLISION_MANUAL.");
+		return;
+	}
+
+	// Compute a short list of cells to build
+	TypedArray<Vector2i> cells_to_build;
+	for (const Vector2i cell : p_cells) {
+		if (_active_instance_cells.has(cell)) {
+			continue;
+		}
+		cells_to_build.push_back(cell);
+	}
+
+	// Destroy all cells not given in the list
+	Dictionary recyclable_instances;
+	const TypedArray<Vector2i> instance_cells = _active_instance_cells.keys();
+	for (const Vector2i cell : instance_cells) {
+		if (p_cells.has(cell)) {
+			continue;
+		}
+
+		const Dictionary active_instances_dict = _active_instance_cells[cell];
+		const TypedArray<int> mesh_asset_keys = active_instances_dict.keys();
+		for (const int mesh_asset_id : mesh_asset_keys) {
+			const Array active_instances_arr = active_instances_dict[mesh_asset_id];
+			// Grab existing array of unused assets for this mesh type and append
+			Array unused_assets = recyclable_instances[mesh_asset_id];
+			unused_assets.append_array(active_instances_arr);
+			recyclable_instances[mesh_asset_id] = unused_assets;
+		}
+		_active_instance_cells.erase(cell);
+	}
+
+	// Build a list of instances to create
+	Dictionary instance_build_data = _get_instance_build_data(cells_to_build, _terrain->get_region_size(), Terrain3DInstancer::CELL_SIZE, _terrain->get_vertex_spacing());
+
+	// Decompose assets which will not be recycled in full
+	Dictionary unused_instance_shapes = _get_unused_instance_shapes(instance_build_data, recyclable_instances);
+
+	// Do the instancing
+	_generate_instances(instance_build_data, recyclable_instances, unused_instance_shapes);
+
+	// Destroy any remaining unused shapes
+	_destroy_remaining_instance_shapes(unused_instance_shapes);
+}
+
 void Terrain3DCollision::set_shape_size(const uint16_t p_size) {
 	uint16_t size = CLAMP(p_size, 8, 64);
 	size = int_round_mult(size, uint16_t(8));
@@ -1307,6 +1521,7 @@ void Terrain3DCollision::_bind_methods() {
 	BIND_ENUM_CONSTANT(InstanceCollisionMode::INSTANCE_COLLISION_DISABLED);
 	BIND_ENUM_CONSTANT(InstanceCollisionMode::INSTANCE_COLLISION_DYNAMIC_GAME);
 	BIND_ENUM_CONSTANT(InstanceCollisionMode::INSTANCE_COLLISION_DYNAMIC_EDITOR);
+	BIND_ENUM_CONSTANT(InstanceCollisionMode::INSTANCE_COLLISION_MANUAL);
 
 	ClassDB::bind_method(D_METHOD("build"), &Terrain3DCollision::build);
 	ClassDB::bind_method(D_METHOD("update", "rebuild"), &Terrain3DCollision::update, DEFVAL(false));
@@ -1326,6 +1541,10 @@ void Terrain3DCollision::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("is_instance_collision_dynamic_mode"), &Terrain3DCollision::is_instance_collision_dynamic_mode);
 	ClassDB::bind_method(D_METHOD("set_instance_collision_radius", "radius"), &Terrain3DCollision::set_instance_collision_radius);
 	ClassDB::bind_method(D_METHOD("get_instance_collision_radius"), &Terrain3DCollision::get_instance_collision_radius);
+
+	ClassDB::bind_method(D_METHOD("build_instance_collision_at_cell", "region_location", "cell_location", "mesh_id"), &Terrain3DCollision::build_instance_collision_at_cell);
+	ClassDB::bind_method(D_METHOD("destroy_instance_collision_at_cell", "region_location", "cell_location", "mesh_id"), &Terrain3DCollision::destroy_instance_collision_at_cell);
+	ClassDB::bind_method(D_METHOD("set_instance_collision_cells", "cells"), &Terrain3DCollision::set_instance_collision_cells);
 
 	ClassDB::bind_method(D_METHOD("set_shape_size", "size"), &Terrain3DCollision::set_shape_size);
 	ClassDB::bind_method(D_METHOD("get_shape_size"), &Terrain3DCollision::get_shape_size);
@@ -1348,6 +1567,6 @@ void Terrain3DCollision::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "mask", PROPERTY_HINT_LAYERS_3D_PHYSICS), "set_mask", "get_mask");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "priority", PROPERTY_HINT_RANGE, "0.1,256,.1"), "set_priority", "get_priority");
 	ADD_PROPERTY(PropertyInfo(Variant::OBJECT, "physics_material", PROPERTY_HINT_RESOURCE_TYPE, "PhysicsMaterial"), "set_physics_material", "get_physics_material");
-	ADD_PROPERTY(PropertyInfo(Variant::INT, "instance_collision_mode", PROPERTY_HINT_ENUM, "Disabled,Dynamic / Game,Dynamic / Editor"), "set_instance_collision_mode", "get_instance_collision_mode");
+	ADD_PROPERTY(PropertyInfo(Variant::INT, "instance_collision_mode", PROPERTY_HINT_ENUM, "Disabled,Dynamic / Game,Dynamic / Editor,Manual"), "set_instance_collision_mode", "get_instance_collision_mode");
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "instance_collision_radius", PROPERTY_HINT_RANGE, "1.,256.,1."), "set_instance_collision_radius", "get_instance_collision_radius");
 }

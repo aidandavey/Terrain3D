@@ -29,6 +29,7 @@ public: // Constants
 		INSTANCE_COLLISION_DISABLED,
 		INSTANCE_COLLISION_DYNAMIC_GAME,
 		INSTANCE_COLLISION_DYNAMIC_EDITOR,
+		INSTANCE_COLLISION_MANUAL,
 	};
 
 private:
@@ -134,9 +135,14 @@ public:
 	bool is_instance_collision_enabled() const { return _instance_collision_mode > InstanceCollisionMode::INSTANCE_COLLISION_DISABLED; }
 	bool is_instance_collision_editor_mode() const { return _instance_collision_mode == InstanceCollisionMode::INSTANCE_COLLISION_DYNAMIC_EDITOR; }
 	bool is_instance_collision_dynamic_mode() const { return _instance_collision_mode == InstanceCollisionMode::INSTANCE_COLLISION_DYNAMIC_GAME || _instance_collision_mode == InstanceCollisionMode::INSTANCE_COLLISION_DYNAMIC_EDITOR; }
+	bool is_instance_collision_manual_mode() const { return _instance_collision_mode == InstanceCollisionMode::INSTANCE_COLLISION_MANUAL; }
 	void set_instance_collision_radius(const real_t p_radius);
 	real_t get_instance_collision_radius() const { return _instance_collision_radius; }
 	void set_instance_collision_dirty(const bool p_dirty = true) { _instance_collision_is_dirty = p_dirty; }
+
+	void build_instance_collision_at_cell(const Vector2i &p_region_loc, const Vector2i &p_cell, const int p_mesh_id);
+	void destroy_instance_collision_at_cell(const Vector2i &p_region_loc, const Vector2i &p_cell, const int p_mesh_id);
+	void set_instance_collision_cells(TypedArray<Vector2i> p_cells);
 
 	void set_shape_size(const uint16_t p_size);
 	uint16_t get_shape_size() const { return _shape_size; }
