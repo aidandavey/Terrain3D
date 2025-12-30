@@ -1,11 +1,13 @@
 shader_type spatial;
 render_mode cull_back, depth_draw_always, diffuse_burley, specular_schlick_ggx, skip_vertex_transform;
 
+// Shader adapted from https://docs.godotengine.org/en/4.4/tutorials/shaders/your_first_shader/your_second_3d_shader.html
+
 //////////////////////////////
 // Constants
 //////////////////////////////
-const int ITERATIONS_VERTEX = 3;
-const int ITERATIONS_FRAGMENT = 4;
+const int ITERATIONS_VERTEX = 1;
+const int ITERATIONS_FRAGMENT =3;
 
 //////////////////////////////
 // Uniforms
@@ -20,22 +22,35 @@ uniform float visible_depth : hint_range(0., 10000., .1) = 256.;
 uniform float depth_curve : hint_range(0., 1.) = .2;
 uniform float edge_fade_distance : hint_range(0.0, 10.0, 0.01) = 1.;
 uniform float refraction_strength : hint_range(0.0, 0.1, 0.001) = 0.07;
+uniform sampler2D water_noise : filter_linear_mipmap, repeat_enable;
 
 group_uniforms light_scattering;
-uniform float height_scattering : hint_range(0.0, 15.0) = 4.0;
+
+uniform bool _light_scattering_enabled = true;
+
+uniform vec3 _light_direction;
+uniform vec3 _light_color : source_color = vec3(1.0, 1.0, .735);
+uniform float height_scattering : hint_range(0.0, 15.0) = 3.0;
 uniform float height_threshold : hint_range(0.0, 1.0) = 0.1;
 uniform float height_angle_threshold : hint_range(0.0, 1.0) = 0.21;
-uniform float fersnel_scattering : hint_range(0.0, 70.0) = 15.0;
-uniform float direct_scattering : hint_range(0.0, 70.0) = 10.0;
-uniform float depth_absorbtion : hint_range(0.0, 10.0) = 1.0;
-group_uniforms;
 
+uniform float fersnel_scattering : hint_range(0.0, 70.0) = 20.0;
+uniform float direct_scattering : hint_range(0.0, 70.0) = 15.0;
+
+uniform float depth_absorbtion : hint_range(0.0, 10.0) = 1.0;
+
+group_uniforms;
 group_uniforms reflections;
 uniform float fresnel_scale : hint_range(0., 1.) = .065;
 uniform float fresnel_power = 1.;
 uniform float specular : hint_range(0., 1.) = .5;
 group_uniforms;
 
+group_uniforms foam;
+uniform bool foam_enabled = true;
+uniform sampler2D foam_alpha;
+uniform float foam_height : hint_range(-2.0, 5.0) = 2.5;
+uniform float foam_scale : hint_range(0.1, 5.0) = 1.5;
 // Uniforms set by C++
 group_uniforms private_dont_touch;
 uniform float _mesh_size = 32.;
@@ -43,9 +58,6 @@ uniform float _subdiv = 1.;
 uniform float _vertex_spacing = 1.;
 uniform float _vertex_density = 1.;
 uniform vec3 _target_pos = vec3(0.,0.,0.);
-uniform bool _light_scattering_enabled = true;
-uniform vec3 _light_direction = vec3(-0.196, 0.980, 0);
-uniform vec3 _light_color : source_color = vec3(1.0, 1.0, .735);
 group_uniforms;
 
 uniform sampler2D depth_texture : hint_depth_texture, repeat_disable, filter_nearest;
@@ -57,48 +69,45 @@ varying float vertex_distance;
 // Ocean Noise
 //////////////////////////////
 
-float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
-}
-
-float noise(vec2 p) {
-    vec2 i = floor(p);
-    vec2 f = fract(p);
-    vec2 u = smoothstep(0., 1., f);
-    vec2 i1 = i + 1.0;
-
-    float a = hash(i);
-    float b = hash(vec2(i1.x, i.y));
-    float c = hash(vec2(i.x, i1.y));
-    float d = hash(i1);
-
-    return 2.0 * mix(mix(a, b, u.x), mix(c, d, u.x), u.y) - 1.0;
-}
-
 float octave(vec2 uv) {
-	uv += noise(uv);
-	vec2 wave = 1.0 - abs(sin(uv));
-	// Shapeing
-	float v = wave.x * wave.y + 1e-6;
-	float s = v * inversesqrt(v);
-	return 1.0 - 2.0 * s + v;
+	float n = texture(water_noise, uv).r;
+	return 1.0 - 2.0 * n;
 }
 
-float ocean_height(vec2 pos, int iterations) {
-	float freq = 0.03 * ocean_scale;
+vec2 rotateUV(vec2 uv, float rotation) {
+	float mid = 0.5;
+	return vec2(
+		cos(rotation) * (uv.x - mid) + sin(rotation) * (uv.y - mid) + mid,
+		cos(rotation) * (uv.y - mid) - sin(rotation) * (uv.x - mid) + mid
+	);
+}
+
+float get_base_height(vec2 pos, float multiplier, int iterations) {
+	float freq = multiplier * ocean_scale;
 	float amp = 4.0;
 	vec2 uv = pos;
-	uv.x *= 0.7;
+	uv.x *= 0.6;
 	float h = 0.0;
-	float t = TIME * time_scale;
+	float t = TIME * time_scale / freq * 0.004;
 
 	for (int i = 0; i < iterations; i++) {
-	    h += (octave((uv + t) * freq) + octave((uv - t) * freq)) * amp;
-	    uv *= mat2(vec2(1.8, 0.8), vec2(-0.8, 1.8));
-	    freq *= 1.9;
-	    amp *= 0.2;
+	    h += (octave((uv + t) * freq) + octave((uv - t) * freq * 0.89)) * amp;
+	   // rotate uv to avoid repetition
+	 	uv = rotateUV(uv, 0.2);
+		
+		// offset smaller waves by the movement of bigger ones
+		uv -= h / freq * 0.004;
+		
+	    freq *= 2.0;
+	    amp *= 0.15;
 	}
     return h * 0.1 * height_scale;
+}
+float ocean_height(vec2 pos, int iterations) {
+	float giant_wave = get_base_height(pos, 0.00007, iterations );
+	float big_wave = get_base_height(pos, 0.0008, iterations);
+	float detail_wave = get_base_height(pos, 0.02, iterations);
+	return big_wave + detail_wave * 0.02 + giant_wave * 2.0;
 }
 
 //////////////////////////////
@@ -124,8 +133,9 @@ void vertex() {
     vertex.xz -= shift * scale * vertex_lerp;
 
     UV = (vertex.xz);
-
-    vertex.y = sea_level + ocean_height(UV, ITERATIONS_VERTEX);
+	
+	// add vertex on every axis for more complex displacement
+    vertex += sea_level * vec3(0.0, 1.0, 0.0) + ocean_height(UV, ITERATIONS_VERTEX) * vec3(0.5, 1.0, 0.5);
 
     VERTEX = (VIEW_MATRIX * vec4(vertex, 1.0)).xyz;
 	vertex_distance = length(vertex - _target_pos);
@@ -179,10 +189,15 @@ void fragment() {
 	
 	refract_uv = SCREEN_UV + mix(refract_offset * (float(proximity_view_pos.z < VERTEX.z) * 2.0 - 1.0), vec2(0.), max(edge_mask, y_limit));
 	
-	vec3 background = texture(screen_texture, refract_uv).rgb;
-	ALBEDO = mix(background, albedo_color * _light_color, alpha * alpha);
-	ALPHA = clamp(1.0 - edge_mask, 0., 1.);
-
+	vec3 final_color = albedo_color * _light_color;
+	float foam_factor = 0.0;
+	if (foam_enabled) {
+		float detail_wave = get_base_height(UV, 0.005 * foam_scale, 2);
+		float foam_texture_alpha = texture(foam_alpha, UV * 0.09 * foam_scale).r;
+		foam_factor = clamp(h * 0.5 + (detail_wave * 2.0 +  edge_mask * 40.0) * foam_texture_alpha * 1.5 - foam_height,0.0, 1.0);
+		
+		final_color = mix(final_color, vec3(0.8), foam_factor);
+	}
 	if (_light_scattering_enabled) {
 		// Approximate light scattering
 		vec3 ray_dir = normalize(mat3(INV_VIEW_MATRIX) * VIEW);
@@ -192,7 +207,12 @@ void fragment() {
 		light_factor += fersnel_scattering *pow(dot(ray_dir, world_normal), 2.0) * _light_color * albedo_color;
 		// direct light scattering
 		light_factor += direct_scattering * dot(normalize(_light_direction), world_normal) * albedo_color * _light_color;
-		BACKLIGHT = light_factor * 4.0 * clamp(alpha, 0.4, 1.0);
+		BACKLIGHT = light_factor * 4.0 * clamp(alpha, 0.4, 1.0) * max(1.0 - foam_factor, 0.5);
 	}
+	
+	vec3 background = texture(screen_texture, refract_uv).rgb;
+	ALBEDO = mix(background, final_color, alpha * alpha);
+	ALPHA = clamp(1.0 - edge_mask, 0., 1.);
+
 
 }
