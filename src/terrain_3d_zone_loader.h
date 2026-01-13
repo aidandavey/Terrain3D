@@ -16,9 +16,10 @@ class Terrain3DZoneLoader : public Node3D {
 private:
 	bool _data_loaded = false;
 	Terrain3D *_terrain;
-	Ref<Terrain3DRegion> _region;
 	Node *instance = nullptr;
 	Array _region_object_nodes;
+	// Persisted region location for editor binding (safer than relying on node name)
+	Vector2i _region_location = V2I_MAX;
 	// File I/O
 	Error _save(const String &p_path = "");
 
@@ -28,6 +29,10 @@ public:
 	void save();
 	void clear();
 	void set_region(Ref<Terrain3DRegion> p_region);
+
+	// Persisted region location accessors
+	void set_region_location(const Vector2i &p_loc);
+	Vector2i get_region_location() const;
 
 	// Editor button accessors.
 	// These are "momentary" properties: the setter triggers the action when true.
@@ -42,6 +47,7 @@ public:
 	bool get_clear_button() const;
 
 protected:
+	void set_terrain(Terrain3D *p_terrain);
 	static void _bind_methods();
 };
 
