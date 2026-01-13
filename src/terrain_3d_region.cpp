@@ -469,6 +469,9 @@ void Terrain3DRegion::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_instances", "instances"), &Terrain3DRegion::set_instances);
 	ClassDB::bind_method(D_METHOD("get_instances"), &Terrain3DRegion::get_instances);
 
+	ClassDB::bind_method(D_METHOD("set_scene", "p_scene"), &Terrain3DRegion::set_zone_scene);
+	ClassDB::bind_method(D_METHOD("get_zone_scene"), &Terrain3DRegion::get_zone_scene);
+
 	ClassDB::bind_method(D_METHOD("save", "path", "save_16_bit"), &Terrain3DRegion::save, DEFVAL(""), DEFVAL(false));
 
 	ClassDB::bind_method(D_METHOD("set_deleted", "deleted"), &Terrain3DRegion::set_deleted);

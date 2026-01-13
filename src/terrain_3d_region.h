@@ -3,6 +3,8 @@
 #ifndef TERRAIN3D_REGION_CLASS_H
 #define TERRAIN3D_REGION_CLASS_H
 
+//#include <godot_cpp/classes/packed_scene.hpp>
+
 #include "constants.h"
 #include "terrain_3d_util.h"
 
@@ -51,6 +53,8 @@ private:
 	// Instancer
 	Dictionary _instances; // Meshes{int} -> Cells{v2i} -> [ Transform3D, Color, Modified ]
 	real_t _vertex_spacing = 1.f; // Spacing that instancer transforms are currently scaled by.
+	// Zone data
+	Ref<PackedScene> _zone_scene;
 
 	// Working data not saved to disk
 	bool _deleted = false; // Marked for deletion on save
@@ -95,6 +99,10 @@ public:
 	Dictionary get_instances() const { return _instances; }
 	void set_vertex_spacing(const real_t p_vertex_spacing) { _vertex_spacing = CLAMP(p_vertex_spacing, 0.25f, 100.f); }
 	real_t get_vertex_spacing() const { return _vertex_spacing; }
+
+	// Zone data
+	void set_zone_scene(const Ref<PackedScene> &p_scene) { _zone_scene = p_scene; }
+	Ref<PackedScene> get_zone_scene() const { return _zone_scene; }
 
 	// Working Data
 	void set_deleted(const bool p_deleted) { _deleted = p_deleted; }

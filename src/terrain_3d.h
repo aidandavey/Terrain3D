@@ -21,6 +21,7 @@
 #include "terrain_3d_instancer.h"
 #include "terrain_3d_material.h"
 #include "terrain_3d_mesher.h"
+#include "terrain_3d_zone_loader.h"
 
 class Terrain3D : public Node3D {
 	GDCLASS(Terrain3D, Node3D);
@@ -60,6 +61,7 @@ private:
 	Terrain3DCollision *_collision = nullptr;
 	Terrain3DMesher *_mesher = nullptr;
 	Terrain3DEditor *_editor = nullptr;
+	Terrain3DZoneLoader *_zone_loader = nullptr;
 	Object *_editor_plugin = nullptr;
 
 	// Tracked Targets

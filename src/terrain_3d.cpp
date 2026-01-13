@@ -53,6 +53,10 @@ void Terrain3D::_initialize() {
 		LOG(DEBUG, "Creating mesher");
 		_mesher = new Terrain3DMesher();
 	}
+	if (!_zone_loader) {
+		LOG(DEBUG, "Creating zone loader");
+		_zone_loader = memnew(Terrain3DZoneLoader);
+	}
 
 	// Connect signals
 	// Any region was changed, update region labels
@@ -89,6 +93,7 @@ void Terrain3D::_initialize() {
 		_collision->initialize(this);
 		_instancer->initialize(this);
 		_mesher->initialize(this);
+		_zone_loader->initialize(this);
 		_update_displacement_buffer();
 		_initialized = true;
 		snap();
