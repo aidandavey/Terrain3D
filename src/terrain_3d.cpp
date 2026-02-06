@@ -53,6 +53,10 @@ void Terrain3D::_initialize() {
 		LOG(DEBUG, "Creating mesher");
 		_mesher = new Terrain3DMesher();
 	}
+	if (!_compute) {
+		LOG(DEBUG, "Creating compute handler");
+		_compute = memnew(Terrain3DCompute);
+	}
 
 	// Connect signals
 	// Any region was changed, update region labels
@@ -87,6 +91,7 @@ void Terrain3D::_initialize() {
 		_material->initialize(this);
 		_assets->initialize(this);
 		_collision->initialize(this);
+		_compute->initialize(this);
 		_instancer->initialize(this);
 		_mesher->initialize(this);
 		_update_displacement_buffer();
@@ -178,6 +183,16 @@ void Terrain3D::_destroy_collision(const bool p_final) {
 	}
 	if (p_final) {
 		memdelete_safely(_collision);
+	}
+}
+
+void Terrain3D::_destroy_compute(const bool p_final) {
+	LOG(INFO, "Destroying Collision");
+	if (_compute) {
+		_compute->destroy();
+	}
+	if (p_final) {
+		memdelete_safely(_compute);
 	}
 }
 
@@ -470,6 +485,7 @@ void Terrain3D::set_data_directory(String p_dir) {
 		_initialized = false;
 		_destroy_labels();
 		_destroy_collision();
+		_destroy_compute();
 		_destroy_instancer();
 		memdelete_safely(_data);
 		_initialize();
@@ -1125,6 +1141,7 @@ void Terrain3D::_notification(const int p_what) {
 			_destroy_mesher(true);
 			_destroy_instancer();
 			_destroy_collision(true);
+			_destroy_compute(true);
 			_assets.unref();
 			_material.unref();
 			memdelete_safely(_data);

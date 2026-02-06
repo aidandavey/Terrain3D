@@ -77,6 +77,7 @@ private:
 	Tool _tool = REGION;
 	Operation _operation = ADD;
 	Dictionary _brush_data;
+	BrushData _brush_data_struct;
 	Vector3 _operation_position = V3_ZERO;
 	Vector3 _operation_movement = V3_ZERO;
 	Array _operation_movement_history;

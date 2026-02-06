@@ -177,6 +177,8 @@ void Terrain3DEditor::_operate_map(const Vector3 &p_global_position, const real_
 		return;
 	}
 
+	//// this part should be ported to GPU/compute workflow
+
 	// MAP Operations
 	real_t vertex_spacing = _terrain->get_vertex_spacing();
 
@@ -184,6 +186,213 @@ void Terrain3DEditor::_operate_map(const Vector3 &p_global_position, const real_
 	// rebuild at the end of the last _operate() call, but until painting is finished we only
 	// need to track if _added_removed_locations has changed between now and the end of the loop
 	int regions_added_removed = _added_removed_locations.size();
+
+	// This loop should be ported to the GPU/compute workflow. We should match the operation/map type first and then run a different shader for the sculpt vs paint tools.:
+	// Compile a list of regions that are affected (CPU side). Perhaps instead of the pixel loop an aabb overlap could be used, if this is faster to compute on the CPU.
+	// For each region, pass the pixels as workgroup (?) size to the GPU, along with the brush parameters, and have it run the operation in a shader.
+
+	Dictionary affected_regions;
+	for (real_t x = 0.f; x < brush_size; x += vertex_spacing) {
+		for (real_t y = 0.f; y < brush_size; y += vertex_spacing) {
+			Vector2 brush_offset = Vector2(x, y) - (V2(brush_size) * .5f);
+			Vector3 brush_global_position =
+					Vector3(p_global_position.x + brush_offset.x + .5f, p_global_position.y,
+							p_global_position.z + brush_offset.y + .5f);
+
+			// Get region for current brush pixel global position
+			Vector2i region_loc = data->get_region_location(brush_global_position);
+			Ref<Terrain3DRegion> region = _operate_region(region_loc);
+			// If no region and can't make one, skip
+			if (region.is_null()) {
+				continue;
+			}
+			affected_regions[region_loc] = region;
+		}
+	}
+
+	_brush_data_struct.global_pos = p_global_position;
+	_brush_data_struct.radius = _brush_data["size"];
+	_brush_data_struct.strength = _brush_data["strength"];
+	_brush_data_struct.height = _brush_data["height"];
+
+	for (Ref<Terrain3DRegion> region : affected_regions.values()) {
+		// Get map for this region and tool
+		Image *map = region->get_map_ptr(map_type);
+		if (!map) {
+			continue;
+		}
+
+		// Do GPU operations
+		if (map_type == TYPE_HEIGHT) {
+			switch (_operation) {
+				case ADD: {
+					LOG(EXTREME, "ADDING");
+					if (_tool == HEIGHT) {
+						LOG(EXTREME, "HEIGHT TOOL");
+						_brush_data_struct.tool = 1;
+						// Height
+
+					} else if (modifier_alt && !std::isnan(p_global_position.y)) {
+						// Lift troughs
+						LOG(EXTREME, "LIFT TROUGHS");
+						// This is incorrect! Needs specific handling in the shader and too operation struct, as it needs to compare the current height at the pixel to the target height, and only raise if it's lower. Otherwise it will raise everything to the target height.
+						_brush_data_struct.tool = 0;
+						_brush_data_struct.operation = 1;
+					} else {
+						// Raise
+						LOG(EXTREME, "RAISE");
+						_brush_data_struct.operation = 0;
+						_brush_data_struct.tool = 0;
+					}
+					break;
+				}
+				case SUBTRACT: {
+					LOG(EXTREME, "SUBRACTING");
+					if (_tool == HEIGHT) {
+						// Height, but GDScript has already picked height at cursor
+						_brush_data_struct.tool = 1;
+					} else if (modifier_alt && !std::isnan(p_global_position.y)) {
+						// Flatten peaks
+						LOG(EXTREME, "FLATTEN PEAKS");
+						// This is incorrect! Needs specific handling in the shader and too operation struct, as it needs to compare the current height at the pixel to the target height, and only lower if it's higher. Otherwise it will lower everything to the target height.
+						_brush_data_struct.tool = 0;
+						_brush_data_struct.operation = 1;
+					} else {
+						// Lower
+						LOG(EXTREME, "LOWER");
+						_brush_data_struct.tool = 0;
+						_brush_data_struct.operation = 1;
+					}
+					break;
+				}
+				case AVERAGE: {
+					LOG(EXTREME, "AVERAGE");
+					_brush_data_struct.tool = 0;
+					_brush_data_struct.operation = 2;
+					break;
+				}
+				case GRADIENT: {
+					LOG(EXTREME, "GRADIENT");
+					_brush_data_struct.tool = 0;
+					_brush_data_struct.operation = 3;
+					break;
+				}
+				default:
+					_brush_data_struct.tool = 0;
+					_brush_data_struct.operation = 0;
+					break;
+			}
+
+		} else if (map_type == TYPE_CONTROL) {
+			switch (_tool) {
+				case TEXTURE: {
+					switch (_operation) {
+						// Base Paint
+						case REPLACE: {
+							break;
+						}
+
+						// Add asset id, and increase weighting
+						case ADD: {
+							break;
+						}
+
+						// Lower weight of current asset id
+						case SUBTRACT: {
+							break;
+						}
+
+						case AVERAGE: {
+						}
+
+						default: {
+							break;
+						}
+					}
+					break;
+				}
+				case AUTOSHADER: {
+					break;
+				}
+				case HOLES: {
+					break;
+				}
+				case NAVIGATION: {
+					break;
+				}
+				default: {
+					break;
+				}
+			}
+
+		} else if (map_type == TYPE_COLOR) {
+			switch (_tool) {
+				case COLOR:
+					switch (_operation) {
+						case ADD: {
+							break;
+						}
+						case SUBTRACT: {
+							break;
+						}
+						case AVERAGE: {
+							break;
+						}
+						default:
+							break;
+					}
+					break;
+				case ROUGHNESS:
+					/* Roughness received from UI is -100 to 100. Changed to 0,1 before storing.
+					 * To convert 0,1 back to -100,100 use: 200 * (color.a - 0.5)
+					 * However Godot stores values as 8-bit ints. Roundtrip is = int(a*255)/255.0
+					 * Roughness 0 is saved as 0.5, but retreived is 0.498, or -0.4 roughness
+					 * We round the final amount in tool_settings.gd:_on_picked().
+					 */
+					switch (_operation) {
+						case ADD: {
+							break;
+						}
+						case SUBTRACT: {
+							break;
+						}
+						case AVERAGE: {
+							break;
+						}
+						default:
+							break;
+					}
+					break;
+				default:
+					break;
+			}
+		}
+		_terrain->get_compute()->despatch_compute(region, _brush_data_struct);
+	}
+
+	// If no added or removed regions, update only changed texture array layers from the edited regions in the rendering server
+	if (_added_removed_locations.size() == regions_added_removed) {
+		data->update_maps(map_type, false, false);
+	} else {
+		// If region qty was changed, must fully rebuild the maps
+		data->update_maps(map_type, true, map_type == TYPE_COLOR);
+	}
+	data->add_edited_area(edited_area);
+
+	if (_tool == HOLES || _tool == HEIGHT || _tool == SCULPT) {
+		_terrain->get_instancer()->update_transforms(edited_area);
+	}
+	// Update Dynamic / Editor collision
+	if (_terrain->get_collision_mode() == Terrain3DCollision::DYNAMIC_EDITOR) {
+		_terrain->get_collision()->update(true);
+	}
+	if (_tool == HEIGHT || _tool == SCULPT || _tool == TEXTURE || _tool == AUTOSHADER) {
+		_terrain->snap();
+	}
+
+	return;
+
+	// Original below
 
 	for (real_t x = 0.f; x < brush_size; x += vertex_spacing) {
 		for (real_t y = 0.f; y < brush_size; y += vertex_spacing) {
@@ -200,7 +409,6 @@ void Terrain3DEditor::_operate_map(const Vector3 &p_global_position, const real_
 				continue;
 			}
 
-			// Get map for this region and tool
 			Image *map = region->get_map_ptr(map_type);
 			if (!map) {
 				continue;
@@ -891,6 +1099,8 @@ void Terrain3DEditor::set_brush_data(const Dictionary &p_data) {
 	_brush_data["gamma"] = CLAMP(real_t(p_data.get("gamma", 1.f)), 0.1f, 2.f);
 	_brush_data["brush_spin_speed"] = CLAMP(real_t(p_data.get("brush_spin_speed", 0.f)), 0.f, 1.f);
 	_brush_data["gradient_points"] = p_data.get("gradient_points", PackedVector3Array());
+
+	_brush_data_struct.strength = _brush_data["strength"];
 
 	Util::print_dict("set_brush_data() Santized brush data:", _brush_data, EXTREME);
 }

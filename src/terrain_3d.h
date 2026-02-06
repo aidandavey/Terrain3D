@@ -16,6 +16,7 @@
 #include "target_node_3d.h"
 #include "terrain_3d_assets.h"
 #include "terrain_3d_collision.h"
+#include "terrain_3d_compute.h"
 #include "terrain_3d_data.h"
 #include "terrain_3d_editor.h"
 #include "terrain_3d_instancer.h"
@@ -58,6 +59,7 @@ private:
 	Ref<Terrain3DAssets> _assets;
 	Terrain3DInstancer *_instancer = nullptr;
 	Terrain3DCollision *_collision = nullptr;
+	Terrain3DCompute *_compute = nullptr;
 	Terrain3DMesher *_mesher = nullptr;
 	Terrain3DEditor *_editor = nullptr;
 	Object *_editor_plugin = nullptr;
@@ -110,6 +112,7 @@ private:
 
 	void _destroy_instancer();
 	void _destroy_collision(const bool p_final = false);
+	void _destroy_compute(const bool p_final = false);
 	void _destroy_mesher(const bool p_final = false);
 	void _update_mesher_aabbs() { _mesher ? _mesher->update_aabbs() : void(); }
 
@@ -146,6 +149,7 @@ public:
 	void set_assets(const Ref<Terrain3DAssets> &p_assets);
 	Ref<Terrain3DAssets> get_assets() const { return _assets; }
 	Terrain3DCollision *get_collision() const { return _collision; }
+	Terrain3DCompute *get_compute() const { return _compute; }
 	Terrain3DInstancer *get_instancer() const { return _instancer; }
 	void set_editor(Terrain3DEditor *p_editor);
 	Terrain3DEditor *get_editor() const { return _editor; }
