@@ -433,10 +433,9 @@ void Terrain3DData::update_maps(const MapType p_map_type, const bool p_all_regio
 	// Generate region color mipmaps
 	if (p_generate_mipmaps && (p_map_type == TYPE_COLOR || p_map_type == TYPE_MAX)) {
 		LOG(EXTREME, "Regenerating color mipmaps");
-		for (const Vector2i &region_loc : _regions.keys()) {
-			Terrain3DRegion *region = get_region_ptr(region_loc);
+		for (const Ref<Terrain3DRegion> region : _regions.values()) {
 			// Generate all or only those marked edited
-			if (region && !region->is_deleted() && (p_all_regions || region->is_edited())) {
+			if (region.is_valid() && !region->is_deleted() && (p_all_regions || region->is_edited())) {
 				region->get_color_map()->generate_mipmaps();
 			}
 		}
@@ -473,14 +472,13 @@ void Terrain3DData::update_maps(const MapType p_map_type, const bool p_all_regio
 		_region_map.resize(REGION_MAP_SIZE * REGION_MAP_SIZE);
 		_region_map_dirty = false;
 		int region_id = 0;
-		for (const Vector2i &region_loc : _regions.keys()) {
-			const Terrain3DRegion *region = get_region_ptr(region_loc);
-			if (region && !region->is_deleted()) {
+		for (const Ref<Terrain3DRegion> region : _regions.values()) {
+			if (region.is_valid() && !region->is_deleted()) {
 				region_id += 1; // Begin at 1 since 0 = no region
-				int map_index = get_region_map_index(region_loc);
+				int map_index = get_region_map_index(region->get_location());
 				if (map_index >= 0) {
 					_region_map[map_index] = region_id;
-					_region_locations[region_loc] = region_loc;
+					//_region_locations[region_loc] = region_loc;
 				}
 			}
 		}
@@ -493,15 +491,9 @@ void Terrain3DData::update_maps(const MapType p_map_type, const bool p_all_regio
 	if (_generated_height_maps.is_dirty()) {
 		LOG(EXTREME, "Regenerating height texture array from regions");
 		_height_maps.clear();
-		for (const Vector2i &region_loc : _region_locations.values()) {
-			const Terrain3DRegion *region = get_region_ptr(region_loc);
-			if (region) {
+		for (const Ref<Terrain3DRegion> region : _regions.values()) {
+			if (region.is_valid()) {
 				_height_maps.push_back(region->get_height_map());
-			} else {
-				// this is no longer an error with the new region_locations management, but log for testing
-				LOG(DEBUG, "Can't find region ", region_loc, ", _regions: ", _regions,
-						", locations: ", _region_locations, ". Please report this error.");
-				return;
 			}
 		}
 		_generated_height_maps.create(_height_maps);
@@ -515,9 +507,8 @@ void Terrain3DData::update_maps(const MapType p_map_type, const bool p_all_regio
 	if (_generated_control_maps.is_dirty()) {
 		LOG(EXTREME, "Regenerating control texture array from regions");
 		_control_maps.clear();
-		for (const Vector2i &region_loc : _region_locations.values()) {
-			const Terrain3DRegion *region = get_region_ptr(region_loc);
-			if (region) {
+		for (const Ref<Terrain3DRegion> region : _regions.values()) {
+			if (region.is_valid()) {
 				_control_maps.push_back(region->get_control_map());
 			}
 		}
@@ -531,9 +522,8 @@ void Terrain3DData::update_maps(const MapType p_map_type, const bool p_all_regio
 	if (_generated_color_maps.is_dirty()) {
 		LOG(EXTREME, "Regenerating color texture array from regions");
 		_color_maps.clear();
-		for (const Vector2i &region_loc : _region_locations.values()) {
-			const Terrain3DRegion *region = get_region_ptr(region_loc);
-			if (region) {
+		for (const Ref<Terrain3DRegion> region : _regions.values()) {
+			if (region.is_valid()) {
 				_color_maps.push_back(region->get_color_map());
 			}
 		}
@@ -546,10 +536,9 @@ void Terrain3DData::update_maps(const MapType p_map_type, const bool p_all_regio
 	// If no maps have been rebuilt, update only individual regions in the array.
 	// Regions marked Edited have been changed by Terrain3DEditor::_operate_map or undo / redo processing.
 	if (!any_changed) {
-		for (const Vector2i &region_loc : _region_locations.values()) {
-			const Terrain3DRegion *region = get_region_ptr(region_loc);
-			if (region && region->is_edited()) {
-				int region_id = get_region_id(region_loc);
+		for (const Ref<Terrain3DRegion> region : _regions.values()) {
+			if (region.is_valid() && region->is_edited()) {
+				int region_id = get_region_id(region->get_location());
 				switch (p_map_type) {
 					case TYPE_HEIGHT:
 						_generated_height_maps.update(region->get_height_map(), region_id);
