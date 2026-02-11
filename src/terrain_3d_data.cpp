@@ -273,7 +273,7 @@ void Terrain3DData::remove_regionp(const Vector3 &p_global_position, const bool 
 
 void Terrain3DData::remove_regionl(const Vector2i &p_region_loc, const bool p_update, const bool p_delete) {
 	Ref<Terrain3DRegion> region = get_region(p_region_loc);
-	remove_region(region, p_update);
+	remove_region(region, p_update, p_delete);
 }
 
 // Remove region marks the region for deletion, and removes it from the active arrays indexed by ID
@@ -1164,7 +1164,8 @@ void Terrain3DData::update_streaming_center(const Vector3 &p_global_pos) {
 	// Unload regions that are now out of range
 	for (Vector2i region_loc : _region_locations) {
 		Vector3 region_center = (v2iv3(region_loc) + Vector3(0.5f, 0.f, 0.5f)) * real_t(_region_size) * _vertex_spacing;
-		if (!target_position.distance_squared_to(region_center) > stream_distance * stream_distance) {
+		LOG(MESG, "Checking region center: ", region_center, " : ", target_position.distance_squared_to(region_center));
+		if (target_position.distance_squared_to(region_center) > stream_distance * stream_distance) {
 			LOG(MESG, "Unloading region: ", region_loc);
 			remove_regionl(region_loc, false, false);
 			modified = true;
@@ -1175,7 +1176,7 @@ void Terrain3DData::update_streaming_center(const Vector3 &p_global_pos) {
 
 	for (Vector2i region_loc : _region_locations) {
 		Vector3 region_center = (v2iv3(region_loc) + Vector3(0.5f, 0.f, 0.5f)) * real_t(_region_size) * _vertex_spacing;
-		if (!target_position.distance_squared_to(region_center) <= stream_distance * stream_distance) {
+		if (target_position.distance_squared_to(region_center) <= stream_distance * stream_distance) {
 			load_region(region_loc, false);
 			modified = true;
 		}

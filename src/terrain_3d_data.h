@@ -77,7 +77,7 @@ private:
 	// Region Streaming
 	bool _streaming_active = false;
 	Vector2i _stream_center = V2I_MAX; // Center of streaming area, in region coordinates
-	real_t stream_distance = 1024.0f; // Distance from stream center at which regions should be streamed in, in world units
+	real_t stream_distance = 128.0f; // Distance from stream center at which regions should be streamed in, in world units
 	Vector3 _last_position = V3_MAX; // Last position used for streaming distance checks, in world coordinates
 	real_t _snap_distance = 5.f; // Distance at which to snap to stream center, in world units
 
