@@ -65,7 +65,11 @@ void Terrain3DData::initialize(Terrain3D *p_terrain) {
 }
 
 void Terrain3DData::set_region_locations(const TypedArray<Vector2i> &p_locations) {
-	SET_IF_DIFF(_region_locations, p_locations);
+	Dictionary locations;
+	for (Vector2i region_loc : p_locations) {
+		locations[region_loc] = region_loc;
+	}
+	SET_IF_DIFF(_region_locations, locations);
 	LOG(INFO, "Setting _region_locations with array sized: ", p_locations.size());
 	_region_map_dirty = true;
 	update_maps(TYPE_MAX, false, false); // only rebuild region map
@@ -74,7 +78,7 @@ void Terrain3DData::set_region_locations(const TypedArray<Vector2i> &p_locations
 // Returns an array of active regions, optionally a shallow or deep copy
 TypedArray<Terrain3DRegion> Terrain3DData::get_regions_active(const bool p_copy, const bool p_deep) const {
 	TypedArray<Terrain3DRegion> region_arr;
-	for (const Vector2i &region_loc : _region_locations) {
+	for (const Vector2i &region_loc : _region_locations.values()) {
 		Ref<Terrain3DRegion> region = get_region(region_loc);
 		if (region.is_valid()) {
 			region_arr.push_back(p_copy ? region->duplicate(p_deep) : region);
@@ -249,15 +253,10 @@ Error Terrain3DData::add_region(const Ref<Terrain3DRegion> &p_region, const bool
 	}
 	p_region->sanitize_maps();
 	p_region->set_deleted(false);
-	if (!_region_locations.has(region_loc)) {
-		_region_locations.push_back(region_loc);
-	} else {
-		LOG(INFO, "Overwriting ", (_regions.has(region_loc)) ? "deleted" : "existing", " region at ", region_loc);
-	}
-
+	_region_locations[region_loc] = region_loc;
+	_regions[region_loc] = p_region;
 	LOG(DEBUG, "Storing region ", region_loc, " version ", vformat("%.3f", p_region->get_version()), " id: ", _region_locations.size());
 	if (p_update) {
-		_regions[region_loc] = p_region;
 		_region_map_dirty = true;
 		update_maps(TYPE_MAX, true, false);
 		_terrain->get_instancer()->update_mmis(-1, V2I_MAX, true);
@@ -285,15 +284,9 @@ void Terrain3DData::remove_region(const Ref<Terrain3DRegion> &p_region, const bo
 	}
 
 	Vector2i region_loc = p_region->get_location();
-	int region_id = _region_locations.find(region_loc);
-	LOG(INFO, "Marking region ", region_loc, " for deletion. update_maps: ", p_update ? "yes" : "no");
-	if (region_id < 0) {
-		LOG(ERROR, "Region ", region_loc, " not found in region_locations. Returning");
-		return;
-	}
 	p_region->set_deleted(p_delete);
 	if (p_delete) {
-		_region_locations.remove_at(region_id);
+		_region_locations.erase(p_region->get_location());
 	}
 	_regions.erase(region_loc);
 	_region_map_dirty = true;
@@ -479,7 +472,6 @@ void Terrain3DData::update_maps(const MapType p_map_type, const bool p_all_regio
 		_region_map.clear();
 		_region_map.resize(REGION_MAP_SIZE * REGION_MAP_SIZE);
 		_region_map_dirty = false;
-		_region_locations = TypedArray<Vector2i>(); // enforce new pointer
 		int region_id = 0;
 		for (const Vector2i &region_loc : _regions.keys()) {
 			const Terrain3DRegion *region = get_region_ptr(region_loc);
@@ -488,7 +480,7 @@ void Terrain3DData::update_maps(const MapType p_map_type, const bool p_all_regio
 				int map_index = get_region_map_index(region_loc);
 				if (map_index >= 0) {
 					_region_map[map_index] = region_id;
-					_region_locations.push_back(region_loc);
+					_region_locations[region_loc] = region_loc;
 				}
 			}
 		}
@@ -501,12 +493,13 @@ void Terrain3DData::update_maps(const MapType p_map_type, const bool p_all_regio
 	if (_generated_height_maps.is_dirty()) {
 		LOG(EXTREME, "Regenerating height texture array from regions");
 		_height_maps.clear();
-		for (const Vector2i &region_loc : _region_locations) {
+		for (const Vector2i &region_loc : _region_locations.values()) {
 			const Terrain3DRegion *region = get_region_ptr(region_loc);
 			if (region) {
 				_height_maps.push_back(region->get_height_map());
 			} else {
-				LOG(ERROR, "Can't find region ", region_loc, ", _regions: ", _regions,
+				// this is no longer an error with the new region_locations management, but log for testing
+				LOG(DEBUG, "Can't find region ", region_loc, ", _regions: ", _regions,
 						", locations: ", _region_locations, ". Please report this error.");
 				return;
 			}
@@ -522,7 +515,7 @@ void Terrain3DData::update_maps(const MapType p_map_type, const bool p_all_regio
 	if (_generated_control_maps.is_dirty()) {
 		LOG(EXTREME, "Regenerating control texture array from regions");
 		_control_maps.clear();
-		for (const Vector2i &region_loc : _region_locations) {
+		for (const Vector2i &region_loc : _region_locations.values()) {
 			const Terrain3DRegion *region = get_region_ptr(region_loc);
 			if (region) {
 				_control_maps.push_back(region->get_control_map());
@@ -538,7 +531,7 @@ void Terrain3DData::update_maps(const MapType p_map_type, const bool p_all_regio
 	if (_generated_color_maps.is_dirty()) {
 		LOG(EXTREME, "Regenerating color texture array from regions");
 		_color_maps.clear();
-		for (const Vector2i &region_loc : _region_locations) {
+		for (const Vector2i &region_loc : _region_locations.values()) {
 			const Terrain3DRegion *region = get_region_ptr(region_loc);
 			if (region) {
 				_color_maps.push_back(region->get_color_map());
@@ -553,7 +546,7 @@ void Terrain3DData::update_maps(const MapType p_map_type, const bool p_all_regio
 	// If no maps have been rebuilt, update only individual regions in the array.
 	// Regions marked Edited have been changed by Terrain3DEditor::_operate_map or undo / redo processing.
 	if (!any_changed) {
-		for (const Vector2i &region_loc : _region_locations) {
+		for (const Vector2i &region_loc : _region_locations.values()) {
 			const Terrain3DRegion *region = get_region_ptr(region_loc);
 			if (region && region->is_edited()) {
 				int region_id = get_region_id(region_loc);
@@ -825,7 +818,7 @@ void Terrain3DData::add_edited_area(const AABB &p_area) {
 // Recursive mode has all regions to recalculate from each heightmap pixel
 void Terrain3DData::calc_height_range(const bool p_recursive) {
 	_master_height_range = V2_ZERO;
-	for (const Vector2i &region_loc : _region_locations) {
+	for (const Vector2i &region_loc : _region_locations.values()) {
 		Terrain3DRegion *region = get_region_ptr(region_loc);
 		if (!region) {
 			continue;
@@ -1115,7 +1108,7 @@ Ref<Image> Terrain3DData::layered_to_image(const MapType p_map_type) const {
 	}
 	Vector2i top_left = V2I_ZERO;
 	Vector2i bottom_right = V2I_ZERO;
-	for (const Vector2i &region_loc : _region_locations) {
+	for (const Vector2i &region_loc : _region_locations.values()) {
 		LOG(DEBUG, "Region location: ", region_loc);
 		if (region_loc.x < top_left.x) {
 			top_left.x = region_loc.x;
@@ -1134,7 +1127,7 @@ Ref<Image> Terrain3DData::layered_to_image(const MapType p_map_type) const {
 	LOG(DEBUG, "Image size: ", img_size);
 	Ref<Image> img = Util::get_filled_image(img_size, COLOR[map_type], false, FORMAT[map_type]);
 
-	for (const Vector2i &region_loc : _region_locations) {
+	for (const Vector2i &region_loc : _region_locations.values()) {
 		Vector2i img_location = (region_loc - top_left) * _region_size;
 		LOG(DEBUG, "Region to blit: ", region_loc, " Export image coords: ", img_location);
 		const Terrain3DRegion *region = get_region_ptr(region_loc);
@@ -1150,7 +1143,7 @@ void Terrain3DData::set_streaming_active(const bool p_active) {
 
 void Terrain3DData::update_streaming_center(const Vector3 &p_global_pos) {
 	Vector3 target_position = p_global_pos == V3_MAX ? _terrain->get_clipmap_target_position() : p_global_pos;
-
+	target_position.y = 0.f;
 	if (_last_position.distance_squared_to(target_position) < _snap_distance * _snap_distance) {
 		return;
 	}
@@ -1162,10 +1155,13 @@ void Terrain3DData::update_streaming_center(const Vector3 &p_global_pos) {
 
 	bool modified = false;
 	// Unload regions that are now out of range
-	for (Vector2i region_loc : _region_locations) {
+	for (Vector2i region_loc : _region_locations.values()) {
 		Vector3 region_center = (v2iv3(region_loc) + Vector3(0.5f, 0.f, 0.5f)) * real_t(_region_size) * _vertex_spacing;
-		LOG(MESG, "Checking region center: ", region_center, " : ", target_position.distance_squared_to(region_center));
 		if (target_position.distance_squared_to(region_center) > stream_distance * stream_distance) {
+			Terrain3DRegion *region = get_region_ptr(region_loc);
+			if (!region) {
+				continue;
+			}
 			LOG(MESG, "Unloading region: ", region_loc);
 			remove_regionl(region_loc, false, false);
 			modified = true;
@@ -1174,16 +1170,21 @@ void Terrain3DData::update_streaming_center(const Vector3 &p_global_pos) {
 
 	// Load regions that are now in range
 
-	for (Vector2i region_loc : _region_locations) {
+	for (Vector2i region_loc : _region_locations.values()) {
 		Vector3 region_center = (v2iv3(region_loc) + Vector3(0.5f, 0.f, 0.5f)) * real_t(_region_size) * _vertex_spacing;
 		if (target_position.distance_squared_to(region_center) <= stream_distance * stream_distance) {
+			Terrain3DRegion *region = get_region_ptr(region_loc);
+			if (region) {
+				continue;
+			}
+			LOG(MESG, "Loading region: ", region_loc);
 			load_region(region_loc, false);
 			modified = true;
 		}
 	}
 
 	if (modified) {
-		update_maps(TYPE_MAX, false, true);
+		update_maps(TYPE_MAX, true, true);
 	}
 }
 

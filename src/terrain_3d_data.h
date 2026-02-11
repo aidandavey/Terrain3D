@@ -57,7 +57,7 @@ private:
 	// arrays are built off of this index; its order defines region_id.
 	// The image arrays are converted to TextureArrays for the shader.
 
-	TypedArray<Vector2i> _region_locations;
+	Dictionary _region_locations;
 	TypedArray<Image> _height_maps;
 	TypedArray<Image> _control_maps;
 	TypedArray<Image> _color_maps;
@@ -77,7 +77,7 @@ private:
 	// Region Streaming
 	bool _streaming_active = false;
 	Vector2i _stream_center = V2I_MAX; // Center of streaming area, in region coordinates
-	real_t stream_distance = 128.0f; // Distance from stream center at which regions should be streamed in, in world units
+	real_t stream_distance = 512.0f; // Distance from stream center at which regions should be streamed in, in world units
 	Vector3 _last_position = V3_MAX; // Last position used for streaming distance checks, in world coordinates
 	real_t _snap_distance = 5.f; // Distance at which to snap to stream center, in world units
 
@@ -94,7 +94,7 @@ public:
 
 	int get_region_count() const { return _region_locations.size(); }
 	void set_region_locations(const TypedArray<Vector2i> &p_locations);
-	TypedArray<Vector2i> get_region_locations() const { return _region_locations; }
+	TypedArray<Vector2i> get_region_locations() const { return _region_locations.values(); }
 	TypedArray<Terrain3DRegion> get_regions_active(const bool p_copy = false, const bool p_deep = false) const;
 	Dictionary get_regions_all() const { return _regions; }
 	PackedInt32Array get_region_map() const { return _region_map; }
