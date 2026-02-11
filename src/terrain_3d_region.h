@@ -18,6 +18,12 @@ public: // Constants
 		TYPE_MAX,
 	};
 
+	enum StreamState {
+		STREAM_UNLOADED,
+		STREAM_CPU,
+		STREAM_GPU,
+	};
+
 	static inline const Image::Format FORMAT[] = {
 		Image::FORMAT_RF, // TYPE_HEIGHT
 		Image::FORMAT_RF, // TYPE_CONTROL
@@ -57,6 +63,9 @@ private:
 	bool _edited = false; // Marked for undo/redo storage
 	bool _modified = false; // Marked for saving
 	Vector2i _location = V2I_MAX;
+
+	// Region Streaming
+	StreamState _stream_state = StreamState::STREAM_UNLOADED;
 
 public:
 	Terrain3DRegion() {}
@@ -114,6 +123,10 @@ public:
 	Dictionary get_data() const;
 	Ref<Terrain3DRegion> duplicate(const bool p_deep = false);
 	void dump(const bool verbose = false) const;
+
+	// Region Streaming
+	void set_stream_state(const StreamState p_state) { _stream_state = p_state; }
+	StreamState get_stream_state() const { return _stream_state; }
 
 protected:
 	static void _bind_methods();

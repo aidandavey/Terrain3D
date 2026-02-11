@@ -74,6 +74,13 @@ private:
 	GeneratedTexture _generated_control_maps;
 	GeneratedTexture _generated_color_maps;
 
+	// Region Streaming
+	bool _streaming_active = false;
+	Vector2i _stream_center = V2I_MAX; // Center of streaming area, in region coordinates
+	real_t stream_distance = 1024.0f; // Distance from stream center at which regions should be streamed in, in world units
+	Vector3 _last_position = V3_MAX; // Last position used for streaming distance checks, in world coordinates
+	real_t _snap_distance = 5.f; // Distance at which to snap to stream center, in world units
+
 	// Functions
 	void _clear();
 	void _copy_paste_dfr(const Terrain3DRegion *p_src_region, const Rect2i &p_src_rect, const Rect2i &p_dst_rect, const Terrain3DRegion *p_dst_region);
@@ -116,15 +123,15 @@ public:
 	Ref<Terrain3DRegion> add_region_blankp(const Vector3 &p_global_position, const bool p_update = true);
 	Ref<Terrain3DRegion> add_region_blank(const Vector2i &p_region_loc, const bool p_update = true);
 	Error add_region(const Ref<Terrain3DRegion> &p_region, const bool p_update = true);
-	void remove_regionp(const Vector3 &p_global_position, const bool p_update = true);
-	void remove_regionl(const Vector2i &p_region_loc, const bool p_update = true);
-	void remove_region(const Ref<Terrain3DRegion> &p_region, const bool p_update = true);
+	void remove_regionp(const Vector3 &p_global_position, const bool p_update = true, const bool p_delete = true);
+	void remove_regionl(const Vector2i &p_region_loc, const bool p_update = true, const bool p_delete = true);
+	void remove_region(const Ref<Terrain3DRegion> &p_region, const bool p_update = true, const bool p_delete = true);
 
 	// File I/O
 	void save_directory(const String &p_dir);
 	void save_region(const Vector2i &p_region_loc, const String &p_dir, const bool p_16_bit = false);
-	void load_directory(const String &p_dir);
-	void load_region(const Vector2i &p_region_loc, const String &p_dir, const bool p_update = true);
+	void load_directory();
+	void load_region(const Vector2i &p_region_loc, const bool p_update = true);
 
 	// Maps
 	TypedArray<Image> get_height_maps() const { return _height_maps; }
@@ -183,6 +190,11 @@ public:
 			const real_t p_offset = 0.f, const real_t p_scale = 1.f);
 	Error export_image(const String &p_file_name, const MapType p_map_type = TYPE_HEIGHT) const;
 	Ref<Image> layered_to_image(const MapType p_map_type) const;
+
+	// Region Streaming
+	void set_streaming_active(const bool p_active);
+	bool is_streaming_active() const { return _streaming_active; }
+	void update_streaming_center(const Vector3 &p_global_pos = V3_MAX);
 
 	// Utility
 	void dump(const bool verbose = false) const;
