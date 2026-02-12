@@ -124,9 +124,6 @@ void Terrain3D::__physics_process(const double p_delta) {
 	} else if (_mesher) {
 		_mesher->snap();
 	}
-	if (_data) {
-		_data->update_streaming_center(get_clipmap_target_position());
-	}
 	if (_collision && _collision->is_dynamic_mode()) {
 		_collision->update();
 	}
@@ -582,9 +579,6 @@ void Terrain3D::snap() {
 	if (_collision) {
 		_collision->reset_target_position();
 	}
-	if (_data) {
-		_data->update_streaming_center(get_clipmap_target_position());
-	}
 	if (_tessellation_level > 0) {
 		_last_buffer_position = V2_MAX;
 	}
@@ -1030,7 +1024,14 @@ void Terrain3D::_notification(const int p_what) {
 			__physics_process(get_physics_process_delta_time());
 			break;
 		}
-
+		case NOTIFICATION_PROCESS: {
+			// Node is processing one frame
+			if (_data) {
+				_data->update_streaming();
+			}
+			break;
+		}
+			/// Change notifications
 		case NOTIFICATION_TRANSFORM_CHANGED: {
 			// Node3D or parent transform changed
 			if (get_transform() != Transform3D()) {

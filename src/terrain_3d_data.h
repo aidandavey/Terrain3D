@@ -50,13 +50,15 @@ private:
 	// `_regions` stores all loaded Terrain3DRegions, indexed by region_location. If marked for
 	// deletion they are removed from here upon saving, however they may stay in memory if tracked
 	// by the Undo system.
-	Dictionary _regions; // Dict[region_location:Vector2i] -> Terrain3DRegion
 
-	// All _active_ region maps are maintained in these secondary indices.
-	// Regions are considered active if and only if they exist in `_region_locations`. The other
-	// arrays are built off of this index; its order defines region_id.
-	// The image arrays are converted to TextureArrays for the shader.
+	// These are currently loading on a thread
+	Dictionary _regions_loading; // Dict[region_location:Vector2i] -> path
+	// These are fully loaded and will be rendered
+	Dictionary _regions_loaded; // Dict[region_location:Vector2i] -> Terrain3DRegion
+	// A flag to show if we are currently loading any regions on a thread
+	bool _loading_regions = false;
 
+	// This is a list of the region locations available to load from disk
 	Dictionary _region_locations;
 	TypedArray<Image> _height_maps;
 	TypedArray<Image> _control_maps;
@@ -96,7 +98,7 @@ public:
 	void set_region_locations(const TypedArray<Vector2i> &p_locations);
 	TypedArray<Vector2i> get_region_locations() const { return _region_locations.values(); }
 	TypedArray<Terrain3DRegion> get_regions_active(const bool p_copy = false, const bool p_deep = false) const;
-	Dictionary get_regions_all() const { return _regions; }
+	Dictionary get_regions_all() const { return _regions_loaded; }
 	PackedInt32Array get_region_map() const { return _region_map; }
 	static int get_region_map_index(const Vector2i &p_region_loc);
 
@@ -131,7 +133,9 @@ public:
 	void save_directory(const String &p_dir);
 	void save_region(const Vector2i &p_region_loc, const String &p_dir, const bool p_16_bit = false);
 	void load_directory();
-	void load_region(const Vector2i &p_region_loc, const bool p_update = true);
+	void load_region(const Vector2i &p_region_loc);
+	void threaded_load_process();
+	Dictionary get_regions_loaded() const { return _regions_loaded; }
 
 	// Maps
 	TypedArray<Image> get_height_maps() const { return _height_maps; }
@@ -194,7 +198,7 @@ public:
 	// Region Streaming
 	void set_streaming_active(const bool p_active);
 	bool is_streaming_active() const { return _streaming_active; }
-	void update_streaming_center(const Vector3 &p_global_pos = V3_MAX);
+	void update_streaming(const Vector3 &p_global_pos = V3_MAX);
 
 	// Utility
 	void dump(const bool verbose = false) const;
@@ -252,7 +256,7 @@ inline int Terrain3DData::get_region_idp(const Vector3 &p_global_position) const
 // eg. backup_region(Ref<Terrain3D>(raw_ptr));
 // Should be used for most functions in Editor and Instancer.
 inline Ref<Terrain3DRegion> Terrain3DData::get_region(const Vector2i &p_region_loc) const {
-	return _regions.get(p_region_loc, Ref<Terrain3DRegion>());
+	return _regions_loaded.get(p_region_loc, Ref<Terrain3DRegion>());
 }
 
 // Using the raw pointer is faster than creating a Ref<>. It can also safely be converted to a Ref as needed
@@ -264,14 +268,14 @@ inline Ref<Terrain3DRegion> Terrain3DData::get_region(const Vector2i &p_region_l
 // The overloaded template was added to catch this. Pulling out of a dictionary/array gives a Variant,
 // so now explicit conversion is required, eg. get_region_ptr(Vector2i(locs[i])).
 inline Terrain3DRegion *Terrain3DData::get_region_ptr(const Vector2i &p_region_loc) const {
-	if (_regions.has(p_region_loc)) {
-		return cast_to<Terrain3DRegion>(_regions[p_region_loc]);
+	if (_regions_loaded.has(p_region_loc)) {
+		return cast_to<Terrain3DRegion>(_regions_loaded[p_region_loc]);
 	}
 	return nullptr;
 }
 
 inline Ref<Terrain3DRegion> Terrain3DData::get_regionp(const Vector3 &p_global_position) const {
-	return _regions.get(get_region_location(p_global_position), Ref<Terrain3DRegion>());
+	return _regions_loaded.get(get_region_location(p_global_position), Ref<Terrain3DRegion>());
 }
 
 // Inline Map Functions

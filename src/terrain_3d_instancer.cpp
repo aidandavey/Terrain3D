@@ -41,14 +41,14 @@ void Terrain3DInstancer::_process_updates() {
 
 	if (update_all) {
 		LOG(DEBUG, "Updating all regions, all mesh_ids");
-		for (const Vector2i &region_loc : region_locations) {
+		for (const Vector2i &region_loc : data->get_regions_loaded().keys()) {
 			const Terrain3DRegion *region = data->get_region_ptr(region_loc);
 			if (!region) {
 				LOG(WARN, "Errant null region found at: ", region_loc);
 				continue;
 			}
 			for (int mesh_id = 0; mesh_id < mesh_count; mesh_id++) {
-				auto pair = std::make_pair(region_loc, mesh_id);
+				auto pair = std::make_pair(region->get_location(), mesh_id);
 				if (region->get_instances().has(mesh_id)) {
 					_update_mmi_by_region(region, mesh_id);
 				}
