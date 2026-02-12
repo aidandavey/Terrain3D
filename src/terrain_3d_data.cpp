@@ -398,7 +398,6 @@ void Terrain3DData::load_region(const Vector2i &p_region_loc) {
 		LOG(ERROR, "Failed to start threaded load for ", path);
 		return;
 	}
-	_loading_regions = true;
 	_regions_loading[p_region_loc] = path;
 }
 
@@ -443,7 +442,6 @@ void Terrain3DData::threaded_load_process() {
 		}
 		_regions_loading.erase(region_loc);
 	}
-	_loading_regions = !_regions_loading.is_empty();
 	LOG(MESG, "Regions pending: ", _regions_loading.size());
 }
 
@@ -1170,10 +1168,6 @@ void Terrain3DData::set_streaming_active(const bool p_active) {
 }
 
 void Terrain3DData::update_streaming(const Vector3 &p_global_pos) {
-	if (!_regions_loading.is_empty()) {
-		threaded_load_process();
-	}
-
 	Vector3 target_position = p_global_pos == V3_MAX ? _terrain->get_clipmap_target_position() : p_global_pos;
 	target_position.y = 0.f;
 	if (_last_position.distance_squared_to(target_position) < _snap_distance * _snap_distance) {
@@ -1187,7 +1181,7 @@ void Terrain3DData::update_streaming(const Vector3 &p_global_pos) {
 
 	bool modified = false;
 
-	if (!_loading_regions) {
+	if (!is_loading_regions()) {
 		// Unload regions that are now out of range
 		for (Vector2i region_loc : _region_locations.values()) {
 			Vector3 region_center = (v2iv3(region_loc) + Vector3(0.5f, 0.f, 0.5f)) * real_t(_region_size) * _vertex_spacing;

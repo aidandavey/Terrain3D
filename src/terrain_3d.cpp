@@ -526,6 +526,7 @@ void Terrain3D::set_camera(Camera3D *p_camera) {
 		_camera.set_target(p_camera);
 		LOG(EXTREME, "Setting camera: ", p_camera);
 		set_physics_process(true);
+		set_process(true);
 	};
 }
 
@@ -539,6 +540,7 @@ void Terrain3D::set_clipmap_target(Node3D *p_node) {
 		_clipmap_target.set_target(p_node);
 		LOG(INFO, "Setting clipmap target: ", p_node);
 		set_physics_process(true);
+		set_process(true);
 	}
 }
 
@@ -562,6 +564,7 @@ void Terrain3D::set_collision_target(Node3D *p_node) {
 		LOG(INFO, "Setting collision target: ", p_node);
 		_collision_target.set_target(p_node);
 		set_physics_process(true);
+		set_process(true);
 	}
 }
 
@@ -581,6 +584,9 @@ void Terrain3D::snap() {
 	}
 	if (_tessellation_level > 0) {
 		_last_buffer_position = V2_MAX;
+	}
+	if (_data) {
+		_data->set_last_stream_position(V3_MAX);
 	}
 }
 
@@ -1022,15 +1028,21 @@ void Terrain3D::_notification(const int p_what) {
 		case NOTIFICATION_PHYSICS_PROCESS: {
 			// Node is processing one physics frame
 			__physics_process(get_physics_process_delta_time());
-			break;
-		}
-		case NOTIFICATION_PROCESS: {
-			// Node is processing one frame
 			if (_data) {
 				_data->update_streaming();
+				set_process(_data->is_loading_regions());
 			}
 			break;
 		}
+
+		case NOTIFICATION_PROCESS: {
+			// Node is processing one frame
+			if (_data && _data->is_loading_regions()) {
+				_data->threaded_load_process();
+			}
+			break;
+		}
+
 			/// Change notifications
 		case NOTIFICATION_TRANSFORM_CHANGED: {
 			// Node3D or parent transform changed

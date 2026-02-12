@@ -55,8 +55,6 @@ private:
 	Dictionary _regions_loading; // Dict[region_location:Vector2i] -> path
 	// These are fully loaded and will be rendered
 	Dictionary _regions_loaded; // Dict[region_location:Vector2i] -> Terrain3DRegion
-	// A flag to show if we are currently loading any regions on a thread
-	bool _loading_regions = false;
 
 	// This is a list of the region locations available to load from disk
 	Dictionary _region_locations;
@@ -136,6 +134,7 @@ public:
 	void load_region(const Vector2i &p_region_loc);
 	void threaded_load_process();
 	Dictionary get_regions_loaded() const { return _regions_loaded; }
+	bool is_loading_regions() const { return !_regions_loading.is_empty(); }
 
 	// Maps
 	TypedArray<Image> get_height_maps() const { return _height_maps; }
@@ -197,6 +196,7 @@ public:
 
 	// Region Streaming
 	void set_streaming_active(const bool p_active);
+	void set_last_stream_position(Vector3 p_position) { _last_position = p_position; }
 	bool is_streaming_active() const { return _streaming_active; }
 	void update_streaming(const Vector3 &p_global_pos = V3_MAX);
 
