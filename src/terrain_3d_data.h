@@ -76,10 +76,9 @@ private:
 
 	// Region Streaming
 	bool _streaming_active = false;
-	Vector2i _stream_center = V2I_MAX; // Center of streaming area, in region coordinates
-	real_t stream_distance = 2000.0f; // Distance from stream center at which regions should be streamed in, in world units
+	real_t _streaming_distance = 2048.0f; // Distance from stream center at which regions should be streamed in, in world units
 	Vector3 _last_position = V3_MAX; // Last position used for streaming distance checks, in world coordinates
-	real_t _snap_distance = 5.f; // Distance at which to snap to stream center, in world units
+	real_t _snap_distance = 5.f; // Distance at which to snap stream center, in world units
 
 	// Functions
 	void _clear();
@@ -195,10 +194,13 @@ public:
 	Ref<Image> layered_to_image(const MapType p_map_type) const;
 
 	// Region Streaming
-	void set_streaming_active(const bool p_active);
-	void set_last_stream_position(Vector3 p_position) { _last_position = p_position; }
+	void set_streaming_active(const bool p_active) { _streaming_active = p_active; }
 	bool is_streaming_active() const { return _streaming_active; }
-	void update_streaming(const Vector3 &p_global_pos = V3_MAX);
+	void set_streaming_distance(const real_t p_distance);
+	real_t get_streaming_distance() const { return _streaming_distance; }
+
+	void set_last_stream_position(Vector3 p_position) { _last_position = p_position; }
+	void update_streaming(const Vector3 &p_global_pos = V3_MAX, const bool p_force = false);
 
 	// Utility
 	void dump(const bool verbose = false) const;

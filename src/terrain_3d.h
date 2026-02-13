@@ -290,6 +290,10 @@ public:
 	void set_show_texture_ao(const bool p_enabled) { _material.is_valid() ? _material->set_show_texture_ao(p_enabled) : void(); }
 	bool get_show_texture_ao() const { return _material.is_valid() ? _material->get_show_texture_ao() : false; }
 
+	// Region Streaming Aliases
+	void set_streaming_distance(const real_t p_distance) { _data ? _data->set_streaming_distance(p_distance) : void(); }
+	real_t get_streaming_distance() const { return _data ? _data->get_streaming_distance() : 0.0f; }
+
 protected:
 	void _notification(const int p_what);
 	void _validate_property(PropertyInfo &p_property) const;

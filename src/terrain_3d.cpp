@@ -91,6 +91,7 @@ void Terrain3D::_initialize() {
 		_mesher->initialize(this);
 		_update_displacement_buffer();
 		_initialized = true;
+		set_process(true);
 		snap();
 	}
 	update_configuration_warnings();
@@ -126,6 +127,9 @@ void Terrain3D::__physics_process(const double p_delta) {
 	}
 	if (_collision && _collision->is_dynamic_mode()) {
 		_collision->update();
+	}
+	if (_data) {
+		_data->update_streaming();
 	}
 }
 
@@ -526,7 +530,6 @@ void Terrain3D::set_camera(Camera3D *p_camera) {
 		_camera.set_target(p_camera);
 		LOG(EXTREME, "Setting camera: ", p_camera);
 		set_physics_process(true);
-		set_process(true);
 	};
 }
 
@@ -540,7 +543,6 @@ void Terrain3D::set_clipmap_target(Node3D *p_node) {
 		_clipmap_target.set_target(p_node);
 		LOG(INFO, "Setting clipmap target: ", p_node);
 		set_physics_process(true);
-		set_process(true);
 	}
 }
 
@@ -564,7 +566,6 @@ void Terrain3D::set_collision_target(Node3D *p_node) {
 		LOG(INFO, "Setting collision target: ", p_node);
 		_collision_target.set_target(p_node);
 		set_physics_process(true);
-		set_process(true);
 	}
 }
 
@@ -584,9 +585,6 @@ void Terrain3D::snap() {
 	}
 	if (_tessellation_level > 0) {
 		_last_buffer_position = V2_MAX;
-	}
-	if (_data) {
-		_data->set_last_stream_position(V3_MAX);
 	}
 }
 
@@ -1028,10 +1026,6 @@ void Terrain3D::_notification(const int p_what) {
 		case NOTIFICATION_PHYSICS_PROCESS: {
 			// Node is processing one physics frame
 			__physics_process(get_physics_process_delta_time());
-			if (_data) {
-				_data->update_streaming();
-				set_process(_data->is_loading_regions());
-			}
 			break;
 		}
 
@@ -1322,6 +1316,10 @@ void Terrain3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_show_texture_ao", "enabled"), &Terrain3D::set_show_texture_ao);
 	ClassDB::bind_method(D_METHOD("get_show_texture_ao"), &Terrain3D::get_show_texture_ao);
 
+	// Region Streaming
+	ClassDB::bind_method(D_METHOD("set_streaming_distance", "distance"), &Terrain3D::set_streaming_distance);
+	ClassDB::bind_method(D_METHOD("get_streaming_distance"), &Terrain3D::get_streaming_distance);
+
 	// Utility
 	ClassDB::bind_method(D_METHOD("get_intersection", "src_pos", "direction", "gpu_mode"), &Terrain3D::get_intersection, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("get_raycast_result", "src_pos", "direction", "collision_mask", "exclude_terrain"),
@@ -1346,6 +1344,7 @@ void Terrain3D::_bind_methods() {
 	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "label_distance", PROPERTY_HINT_RANGE, "0.0,10000.0,0.5,or_greater"), "set_label_distance", "get_label_distance");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "label_size", PROPERTY_HINT_RANGE, "24,128,1"), "set_label_size", "get_label_size");
 	ADD_PROPERTY(PropertyInfo(Variant::BOOL, "show_grid"), "set_show_region_grid", "get_show_region_grid");
+	ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "streaming_distance", PROPERTY_HINT_RANGE, "1024.0,100000.0,128.0,or_greater"), "set_streaming_distance", "get_streaming_distance");
 
 	ADD_GROUP("Collision", "");
 	ADD_PROPERTY(PropertyInfo(Variant::INT, "collision_mode", PROPERTY_HINT_ENUM, "Disabled,Dynamic / Game,Dynamic / Editor,Full / Game,Full / Editor"), "set_collision_mode", "get_collision_mode");

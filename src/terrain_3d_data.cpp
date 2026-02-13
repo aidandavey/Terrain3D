@@ -62,6 +62,7 @@ void Terrain3DData::initialize(Terrain3D *p_terrain) {
 	}
 	_region_size = _terrain->get_region_size();
 	_region_sizev = V2I(_region_size);
+	set_last_stream_position(V3_MAX);
 }
 
 void Terrain3DData::set_region_locations(const TypedArray<Vector2i> &p_locations) {
@@ -369,8 +370,14 @@ void Terrain3DData::load_directory() {
 			LOG(ERROR, "Cannot get region location from file name: ", fname);
 			continue;
 		}
+
 		_region_locations[loc] = loc;
-		//load_region(loc);
+	}
+	// Load one region to get region size and version, which are needed to load the rest.
+	// The rest will be loaded as the player moves or manually by the user
+	// We may be loading a huge terrain so we don't want to load them all at once here.
+	if (!_region_locations.is_empty()) {
+		load_region(_region_locations.values()[0]);
 	}
 }
 
@@ -390,23 +397,28 @@ void Terrain3DData::load_region(const Vector2i &p_region_loc) {
 		LOG(ERROR, "File ", path, " doesn't exist");
 		return;
 	}
-
+	_regions_loading[p_region_loc] = path;
 	// Start threaded load
 	LOG(INFO, "Starting threaded load for region ", p_region_loc);
 	Error err = ResourceLoader::get_singleton()->load_threaded_request(path, "Terrain3DRegion", false, ResourceLoader::CACHE_MODE_IGNORE);
 	if (err != OK) {
 		LOG(ERROR, "Failed to start threaded load for ", path);
+		_regions_loading.erase(p_region_loc);
 		return;
 	}
-	_regions_loading[p_region_loc] = path;
 }
 
 void Terrain3DData::threaded_load_process() {
+	if (_regions_loading.is_empty()) {
+		return;
+	}
 	Array loading_locations = _regions_loading.keys();
 	for (const Vector2i &region_loc : loading_locations) {
 		String path = _regions_loading[region_loc];
 		if (!path) {
 			LOG(ERROR, "path was ", path)
+			_regions_loading.erase(region_loc);
+			continue;
 		}
 		ResourceLoader::ThreadLoadStatus status = ResourceLoader::get_singleton()->load_threaded_get_status(path);
 		if (status == ResourceLoader::THREAD_LOAD_IN_PROGRESS) {
@@ -430,7 +442,7 @@ void Terrain3DData::threaded_load_process() {
 				if (_terrain->get_region_size() != (Terrain3D::RegionSize)region->get_region_size()) {
 					LOG(ERROR, "Region size mismatch. First loaded: ", _terrain->get_region_size(), " next: ",
 							region->get_region_size(), " in file: ", path);
-					return;
+					continue;
 				}
 			}
 			region->take_over_path(path);
@@ -442,7 +454,6 @@ void Terrain3DData::threaded_load_process() {
 		}
 		_regions_loading.erase(region_loc);
 	}
-	LOG(MESG, "Regions pending: ", _regions_loading.size());
 }
 
 TypedArray<Image> Terrain3DData::get_maps(const MapType p_map_type) const {
@@ -1164,34 +1175,40 @@ Ref<Image> Terrain3DData::layered_to_image(const MapType p_map_type) const {
 	return img;
 }
 
-void Terrain3DData::set_streaming_active(const bool p_active) {
+void Terrain3DData::set_streaming_distance(const real_t p_distance) {
+	SET_IF_DIFF(_streaming_distance, p_distance);
+	_last_position = V3_MAX; // Force update on next call to update_streaming
+	LOG(INFO, "Setting streaming distance to: ", _streaming_distance);
 }
 
-void Terrain3DData::update_streaming(const Vector3 &p_global_pos) {
+void Terrain3DData::update_streaming(const Vector3 &p_global_pos, const bool p_force) {
+	if (_region_map_dirty) {
+		update_maps(TYPE_MAX, true, false);
+	}
 	Vector3 target_position = p_global_pos == V3_MAX ? _terrain->get_clipmap_target_position() : p_global_pos;
 	target_position.y = 0.f;
 	if (_last_position.distance_squared_to(target_position) < _snap_distance * _snap_distance) {
 		return;
 	}
 
-	LOG(DEBUG, "Updating streaming center to: ", get_region_location(target_position), " : ", target_position);
+	LOG(INFO, "Updating streaming center to: ", get_region_location(target_position), " : ", target_position);
 
 	_last_position = target_position;
-	_stream_center = get_region_location(target_position);
-
-	bool modified = false;
+	real_t _streaming_distance_SQ = _streaming_distance * _streaming_distance;
 
 	if (!is_loading_regions()) {
-		// Unload regions that are now out of range
-		for (Vector2i region_loc : _region_locations.values()) {
+		bool modified = false;
+		// Unload regions that are now out of range and not marked as modified
+		for (Vector2i region_loc : _regions_loaded.keys()) {
+			Terrain3DRegion *region = get_region_ptr(region_loc);
+			if (!region || region->is_modified()) {
+				continue;
+			}
 			Vector3 region_center = (v2iv3(region_loc) + Vector3(0.5f, 0.f, 0.5f)) * real_t(_region_size) * _vertex_spacing;
-			if (target_position.distance_squared_to(region_center) > stream_distance * stream_distance) {
+			if (target_position.distance_squared_to(region_center) > _streaming_distance_SQ) {
 				Terrain3DRegion *region = get_region_ptr(region_loc);
-				if (!region) {
+				if (!region || region->is_modified()) {
 					continue;
-				}
-				if (region->is_modified()) {
-					save_region(region_loc, _terrain->get_data_directory());
 				}
 				LOG(MESG, "Unloading region: ", region_loc);
 				remove_regionl(region_loc, false, false);
@@ -1199,23 +1216,26 @@ void Terrain3DData::update_streaming(const Vector3 &p_global_pos) {
 			}
 		}
 	}
-	// Load regions that are now in range
 
-	for (Vector2i region_loc : _region_locations.values()) {
-		Vector3 region_center = (v2iv3(region_loc) + Vector3(0.5f, 0.f, 0.5f)) * real_t(_region_size) * _vertex_spacing;
-		if (target_position.distance_squared_to(region_center) <= stream_distance * stream_distance) {
-			Terrain3DRegion *region = get_region_ptr(region_loc);
-			if (region) {
+	// Calculate which regions could possibly be in range
+	Vector2i center_region = get_region_location(target_position);
+	int region_radius = int(Math::ceil(_streaming_distance / (_region_size * _vertex_spacing))) + 1;
+
+	// Load regions that are now in range
+	// Only check regions within the bounding box
+	for (int z = center_region.y - region_radius; z <= center_region.y + region_radius; z++) {
+		for (int x = center_region.x - region_radius; x <= center_region.x + region_radius; x++) {
+			Vector2i region_loc = Vector2i(x, z);
+			Vector3 region_center = (v2iv3(region_loc) + Vector3(0.5f, 0.f, 0.5f)) * real_t(_region_size) * _vertex_spacing;
+			if (target_position.distance_squared_to(region_center) > _streaming_distance_SQ) {
+				continue;
+			}
+			if (!_region_locations.has(region_loc) || _regions_loading.has(region_loc) || _regions_loaded.has(region_loc)) {
 				continue;
 			}
 			LOG(MESG, "Loading region: ", region_loc);
 			load_region(region_loc);
-			modified = true;
 		}
-	}
-
-	if (modified) {
-		update_maps(TYPE_MAX, true, true);
 	}
 }
 
@@ -1292,7 +1312,11 @@ void Terrain3DData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("save_region", "region_location", "directory", "save_16_bit"), &Terrain3DData::save_region, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("load_directory"), &Terrain3DData::load_directory);
 	ClassDB::bind_method(D_METHOD("load_region", "region_location"), &Terrain3DData::load_region);
+
+	// Region Streaming
 	ClassDB::bind_method(D_METHOD("update_streaming", "global_position"), &Terrain3DData::update_streaming);
+	ClassDB::bind_method(D_METHOD("set_streaming_distance", "distance"), &Terrain3DData::set_streaming_distance);
+	ClassDB::bind_method(D_METHOD("get_streaming_distance"), &Terrain3DData::get_streaming_distance);
 
 	ClassDB::bind_method(D_METHOD("get_height_maps"), &Terrain3DData::get_height_maps);
 	ClassDB::bind_method(D_METHOD("get_control_maps"), &Terrain3DData::get_control_maps);
