@@ -333,6 +333,8 @@ void Terrain3DMesher::snap() {
 
 	// Recenter terrain on the target
 	_last_target_position = target_pos_2d;
+	// disregard actual position from here on, since the shader will handle the actual terrain height and position.
+	target_pos = V3_ZERO;
 	Vector3 snapped_pos = (target_pos / vertex_spacing).floor() * vertex_spacing;
 	Vector3 pos = V3_ZERO;
 	for (int lod = 0; lod < _clipmap_rids.size(); ++lod) {

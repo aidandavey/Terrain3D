@@ -186,16 +186,24 @@ void vertex() {
 	// Save Camera Position to varying for access in later functions
 	v_camera_pos = MAIN_CAM_INV_VIEW_MATRIX[3].xyz;
 
-	// Get vertex of flat plane in world coordinates and set world UV
-	v_vertex = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	vec3 snapped_pos = floor((_target_pos));
+	snapped_pos.y = 0.;
+	//snapped_pos = vec3(0., 0., 0.);
+
+	// Transform vertex to world space based on the camera's snapped position. This is required for the clipmap to work correctly.
+	// Replaces model matrix transform with a translation matrix to avoid floating point precision issues when the camera is far from the origin.
+	// Also supports splitscreen and multiple cameras by using the camera's view matrix to transform the vertex to world space.
+
+	//// Get vertex of flat plane in world coordinates and set world UV
+	v_vertex = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz + snapped_pos;
 
 	// Distance from target node to vertex on a flat plane
-	v_vertex_xz_dist = length(v_vertex.xz - _target_pos.xz);
+	v_vertex_xz_dist = length(v_vertex.xz - snapped_pos.xz);
 
 	// Geomorph vertex across clipmap LODs, set end and start for linear height interpolate
 	float scale = MODEL_MATRIX[0][0];
 	float inv_scale = 1.0 / scale;
-	float max_xz = max(abs(v_vertex.x - _target_pos.x), abs(v_vertex.z - _target_pos.z));
+	float max_xz = max(abs(v_vertex.x - snapped_pos.x), abs(v_vertex.z - snapped_pos.z));
 	float vertex_lerp = smoothstep(0.0, 1.0, (max_xz * inv_scale - _mesh_size - 4.0) / (_mesh_size - 4.0));
 	vec2 vertex_fract = fract(VERTEX.xz * 0.5) * 2.0;
 	// For LOD0 morph from a regular grid to an alternating grid to align with LOD1+
