@@ -472,7 +472,7 @@ void Terrain3DMesher::update_aabbs(const real_t p_cull_margin, const Vector2 &p_
 	for (const RID &rid : _mesh_rids) {
 		AABB aabb = RS->mesh_get_custom_aabb(rid);
 		aabb.position.y = height_range.x - cull_margin;
-		aabb.size.y = height_range.y + cull_margin * 2.f;
+		aabb.size.y = height_range.y + cull_margin * 20000.f;
 		RS->mesh_set_custom_aabb(rid, aabb);
 	}
 	return;
