@@ -538,6 +538,18 @@ void Terrain3DUtil::benchmark(Terrain3D *p_terrain) {
 	}
 }
 
+// Grid snapping functions
+Vector2i Terrain3DUtil::snap_to_grid(const Vector2i p_pos, const uint16_t p_cell_size) {
+	return Vector2i(int_round_mult(p_pos.x, int32_t(p_cell_size)),
+			int_round_mult(p_pos.y, int32_t(p_cell_size)));
+}
+
+Vector2i Terrain3DUtil::snap_to_grid(const Vector3 p_pos, const uint16_t p_cell_size) {
+	return Vector2i(Math::floor(p_pos.x / real_t(p_cell_size) + 0.5f),
+				   Math::floor(p_pos.z / real_t(p_cell_size) + 0.5f)) *
+			p_cell_size;
+}
+
 ///////////////////////////
 // Protected Functions
 ///////////////////////////

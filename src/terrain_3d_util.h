@@ -58,6 +58,9 @@ public:
 	static Ref<Image> luminance_to_height(const Ref<Image> &p_src_rgb);
 	static void benchmark(Terrain3D *p_terrain);
 
+	static Vector2i snap_to_grid(const Vector2i p_pos, const uint16_t p_cell_size);
+	static Vector2i snap_to_grid(const Vector3 p_pos, const uint16_t p_cell_size);
+
 protected:
 	static void _bind_methods();
 };
