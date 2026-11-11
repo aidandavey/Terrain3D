@@ -173,7 +173,7 @@ void Terrain3D::_grab_camera() {
 void Terrain3D::_destroy_collision(const bool p_final) {
 	LOG(INFO, "Destroying Collision");
 	if (_collision) {
-		_collision->destroy();
+		_collision->destroy(p_final);
 	}
 	if (p_final) {
 		memdelete_safely(_collision);

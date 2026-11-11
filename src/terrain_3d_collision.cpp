@@ -142,6 +142,11 @@ void Terrain3DCollision::initialize(Terrain3D *p_terrain) {
 	if (!IS_EDITOR && is_editor_mode()) {
 		LOG(WARN, "Change collision mode to a non-editor mode for releases");
 	}
+	if (!_grid) {
+		LOG(DEBUG, "Creating collision grid manager");
+		_grid = memnew(Terrain3DGrid);
+		_grid->initialize(32, 16);
+	}
 	build();
 }
 
@@ -183,25 +188,20 @@ void Terrain3DCollision::build() {
 	}
 	_reload_physics_material();
 
-	// Create CollisionShape3Ds
-	int shape_count;
-	int hshape_size;
-	if (is_dynamic_mode()) {
-		int grid_width = _radius * 2 / _shape_size;
-		grid_width = int_ceil_pow2(grid_width, 4);
-		shape_count = grid_width * grid_width;
-		hshape_size = _shape_size + 1;
-		LOG(DEBUG, "Grid width: ", grid_width);
-	} else {
-		shape_count = _terrain->get_data()->get_region_count();
-		hshape_size = _terrain->get_region_size() + 1;
+	if (!is_dynamic_mode()) {
+		_grid->set_cell_size(_terrain->get_region_size() + 1);
 	}
+
+	// Create CollisionShape3Ds
+	int shape_count = _grid->get_cell_count();
+	int hshape_size = _grid->get_cell_size() + 1;
+
 	// Preallocate memory for push_back()
 	if (is_editor_mode()) {
 		_shapes.reserve(shape_count);
 	}
 	LOG(DEBUG, "Shape count: ", shape_count);
-	LOG(DEBUG, "Shape size: ", _shape_size, ", hshape_size: ", hshape_size);
+	LOG(DEBUG, "Shape size: ", _grid->get_cell_size(), ", hshape_size: ", hshape_size);
 	Transform3D xform(Basis(), V3_MAX);
 	for (int i = 0; i < shape_count; i++) {
 		if (is_editor_mode()) {
@@ -244,27 +244,24 @@ void Terrain3DCollision::update(const Vector2i &p_region_loc, const bool p_rebui
 
 	if (is_dynamic_mode()) {
 		// Snap descaled position to a _shape_size grid (eg. multiples of 16)
-		Vector2i snapped_pos = _snap_to_grid(_terrain->get_collision_target_position() / spacing);
-		LOG(EXTREME, "Updating collision at ", snapped_pos);
+		_grid->snap(_terrain->get_collision_target_position(), spacing);
+		LOG(EXTREME, "Updating collision at ", _grid->get_snapped_position());
 
 		// Return if target hasn't moved to next grid slot
-		if (!p_rebuild && (_last_snapped_pos - snapped_pos).length_squared() == 0) {
+		if (!p_rebuild && !_grid->is_dirty()) {
 			return;
 		}
 
 		LOG(EXTREME, "---- 1. Defining area as a radius on a grid ----");
 		// Create a 0-N grid, center on snapped_pos
 		PackedInt32Array grid;
-		int grid_width = _radius * 2 / _shape_size; // 64*2/16 = 8
-		grid_width = int_ceil_pow2(grid_width, 4);
-		grid.resize(grid_width * grid_width);
+		grid.resize(_grid->get_cell_count());
 		grid.fill(-1);
-		Vector2i grid_offset = -V2I(grid_width / 2); // offset # cells to center of grid
-		Vector2i grid_corner = snapped_pos + grid_offset * _shape_size; // Top left of grid
-		LOG(EXTREME, "New snapped_pos: ", snapped_pos);
+		Vector2i grid_corner = _grid->get_grid_corner(); // Top left of grid
+		LOG(EXTREME, "New snapped_pos: ", _grid->get_snapped_position());
 		LOG(EXTREME, "grid_corner: ", grid_corner);
-		LOG(EXTREME, "radius: ", _radius, ", grid_width: ", grid_width, ", grid_offset: ", grid_offset, ", # cells: ", grid.size());
-		LOG(EXTREME, "shape_size: ", _shape_size);
+		LOG(EXTREME, "radius: ", _grid->get_radius(), ", grid_width: ", _grid->get_grid_width(), ", grid_offset: ", _grid->get_grid_offset(), ", # cells: ", grid.size());
+		LOG(EXTREME, "shape_size: ", _grid->get_cell_size());
 
 		LOG(EXTREME, "---- 2. Checking existing shapes ----");
 		// If shape is within area, skip
@@ -273,8 +270,7 @@ void Terrain3DCollision::update(const Vector2i &p_region_loc, const bool p_rebui
 		// Stores index into _shapes array
 		TypedArray<int> inactive_shape_ids;
 
-		real_t radius_sqr = real_t(_radius * _radius);
-		Vector2i shape_offset = V2I(_shape_size / 2); // offset meters to top left corner of shape
+		Vector2i shape_offset = V2I(_grid->get_cell_size() / 2); // offset meters to top left corner of shape
 		int shape_count = is_editor_mode() ? _shapes.size() : PS->body_get_shape_count(_static_body_rid);
 		for (int i = 0; i < shape_count; i++) {
 			Vector3 shape_global_pos = _shape_get_position(i);
@@ -284,15 +280,14 @@ void Terrain3DCollision::update(const Vector2i &p_region_loc, const bool p_rebui
 				LOG(EXTREME, "Shape ", i, " marked inactive (rebuild or out of bounds)");
 				continue;
 			}
-
 			// Descale global position of shape center
-			Vector3 shape_center = shape_global_pos / spacing;
+			Vector3 shape_center = shape_global_pos;
 			// Unique key: Top left corner of shape, snapped to grid
-			Vector2i shape_pos = _snap_to_grid(v3v2i(shape_center) - shape_offset);
-			if (v3v2i(shape_center).distance_squared_to(snapped_pos) <= radius_sqr) {
+			Vector2i shape_pos = Util::snap_to_grid(v3v2i(shape_center / spacing) - shape_offset, _grid->get_cell_size());
+			if (_grid->is_in_radius(shape_center)) {
 				// Get index into shape array
-				Vector2i grid_loc = (shape_pos - grid_corner) / _shape_size;
-				int idx = grid_loc.y * grid_width + grid_loc.x;
+				Vector2i grid_loc = (shape_pos - grid_corner) / _grid->get_cell_size();
+				int idx = grid_loc.y * _grid->get_grid_width() + grid_loc.x;
 				if (idx >= 0 && idx < grid.size()) {
 					grid[idx] = i;
 					_shape_set_disabled(i, false);
@@ -314,16 +309,16 @@ void Terrain3DCollision::update(const Vector2i &p_region_loc, const bool p_rebui
 		// Else assign shape and form it
 
 		for (int i = 0; i < grid.size(); i++) {
-			Vector2i grid_loc(i % grid_width, i / grid_width);
+			Vector2i grid_loc(i % _grid->get_grid_width(), i / _grid->get_grid_width());
 			if (!p_rebuild && grid[i] >= 0) {
 				LOG(EXTREME, "grid[", i, ":", grid_loc, "] already active, skipping");
 				continue;
 			}
 
 			// Unique key: Top left corner of shape, snapped to grid
-			Vector2i shape_pos = grid_corner + grid_loc * _shape_size;
+			Vector2i shape_pos = grid_corner + grid_loc * _grid->get_cell_size();
 			Vector2i shape_center = shape_pos + shape_offset;
-			if (shape_center.distance_squared_to(snapped_pos) > radius_sqr) {
+			if (shape_center.distance_squared_to(_grid->get_snapped_position()) > _grid->get_radius_sqr()) {
 				LOG(EXTREME, "grid[", i, ":", grid_loc, "] shape_pos : ", shape_pos, " out of circle, skipping");
 				continue;
 			}
@@ -331,7 +326,7 @@ void Terrain3DCollision::update(const Vector2i &p_region_loc, const bool p_rebui
 				LOG(ERROR, "No more unused shapes! Aborting!");
 				break;
 			}
-			Dictionary shape_data = _get_shape_data(shape_pos, _shape_size);
+			Dictionary shape_data = _get_shape_data(shape_pos, _grid->get_cell_size());
 			if (shape_data.is_empty()) {
 				LOG(EXTREME, "grid[", i, ":", grid_loc, "] shape_pos : ", shape_pos, " No region found");
 				continue;
@@ -344,8 +339,6 @@ void Terrain3DCollision::update(const Vector2i &p_region_loc, const bool p_rebui
 			_shape_set_disabled(shape_id, false);
 			_shape_set_data(shape_id, shape_data);
 		}
-		_last_snapped_pos = snapped_pos;
-		LOG(EXTREME, "Setting _last_snapped_pos: ", _last_snapped_pos);
 		LOG(EXTREME, "inactive_shape_ids size: ", inactive_shape_ids.size());
 
 	} else {
@@ -374,7 +367,7 @@ void Terrain3DCollision::update(const Vector2i &p_region_loc, const bool p_rebui
 	LOG(EXTREME, "Collision update time: ", Time::get_singleton()->get_ticks_usec() - time, " us");
 }
 
-void Terrain3DCollision::destroy() {
+void Terrain3DCollision::destroy(const bool p_final) {
 	_initialized = false;
 	_last_snapped_pos = V2I_MAX;
 
@@ -405,6 +398,10 @@ void Terrain3DCollision::destroy() {
 		remove_from_tree(_static_body);
 		memdelete_safely(_static_body);
 	}
+	if (_grid && p_final) {
+		_grid->destroy();
+		memdelete_safely(_grid);
+	}
 }
 
 void Terrain3DCollision::set_mode(const CollisionMode p_mode) {
@@ -418,29 +415,25 @@ void Terrain3DCollision::set_mode(const CollisionMode p_mode) {
 }
 
 void Terrain3DCollision::set_shape_size(const uint16_t p_size) {
-	uint16_t size = CLAMP(p_size, 8, 64);
-	size = int_round_mult(size, uint16_t(8));
-	SET_IF_DIFF(_shape_size, size);
-	LOG(INFO, "Setting collision dynamic shape size: ", _shape_size);
-	// Ensure size:radius always results in at least one valid shape
-	if (_shape_size > _radius - 8) {
-		set_radius(_shape_size + 16);
-	} else if (is_dynamic_mode()) {
+	if (!_grid) {
+		LOG(ERROR, "Grid not initialized. Can't set shape size.");
+		return;
+	}
+	LOG(INFO, "Setting collision shape size: ", p_size);
+	_grid->set_cell_size(p_size);
+	if (is_dynamic_mode()) {
 		build();
 	}
 }
 
 void Terrain3DCollision::set_radius(const uint16_t p_radius) {
-	uint16_t radius = CLAMP(p_radius, 16, 256);
-	radius = int_ceil_pow2(radius, uint16_t(16));
-	SET_IF_DIFF(_radius, radius);
-	LOG(INFO, "Setting collision dynamic radius: ", _radius);
-	// Ensure size:radius always results in at least one valid shape
-	if (_radius < _shape_size + 8) {
-		set_shape_size(_radius - 8);
-	} else if (_shape_size < 16 && _radius > 128) {
-		set_shape_size(16);
-	} else if (is_dynamic_mode()) {
+	if (!_grid) {
+		LOG(ERROR, "Grid not initialized. Can't set shape size.");
+		return;
+	}
+	LOG(INFO, "Setting collision dynamic radius: ", _grid->get_radius());
+	_grid->set_radius(p_radius);
+	if (is_dynamic_mode()) {
 		build();
 	}
 }
